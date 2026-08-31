@@ -141,7 +141,12 @@ the seed's new home in the `perform-migrations` initContainer.
   accidental. The worker's `os.getenv` defaults are gone with it -- a missing
   `REDIS_HOST` now stops the process instead of quietly dialling localhost.
 - **bcrypt blocking the event loop** on every login. Unchanged by the swap —
-  passlib was blocking too.
+  passlib was blocking too. Done since: `get_password_hash` and
+  `is_valid_password` hand bcrypt to `asyncio.to_thread`. Ten concurrent logins
+  went from 2.87s to 0.33s; before, each one held the loop for its full ~287ms.
+  Note that `async` alone would not have done this — a coroutine calling bcrypt
+  straight through never yields, and the tests in `test_security.py` fail
+  against exactly that version.
 - **`/api/v1/home/` doesn't check `is_active`.** It depends on
   `get_token_data`, which only decodes the JWT; the active check lives in
   `get_current_user`. A deactivated user's unexpired token still works there.
