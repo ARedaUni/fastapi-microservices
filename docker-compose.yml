@@ -18,11 +18,13 @@ services:
     image: redis:alpine
     ports: ["56379:6379"]
 
+  # Runs to completion before the API starts. Owns both schema and seed data --
+  # the seed used to be the archived base image's PRE_START_PATH hook.
   migrate:
     build:
       context: users
-      dockerfile: docker/backend.dockerfile
-    command: alembic upgrade head
+      target: prod
+    command: sh -c "alembic upgrade head && python scripts/initial_data.py"
     env_file: .env
     volumes:
       - ./users/migrations:/app/migrations
@@ -32,15 +34,14 @@ services:
   api:
     build:
       context: users
-      dockerfile: docker/backend.dockerfile
-    command: /start-reload.sh
+      target: dev
     env_file: .env
     ports: ["8000:80"]
     volumes:
       - ./users/app:/app/app
       - ./users/tests:/app/tests
       - ./users/migrations:/app/migrations
-      - ./setup.cfg:/app/setup.cfg  # isort/flake8 config lives at the repo root
+      - ./users/pyproject.toml:/app/pyproject.toml
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost/api/health/')"]
       interval: 3s
@@ -54,7 +55,7 @@ services:
   worker:
     build:
       context: users
-      dockerfile: docker/worker.dockerfile
+      target: worker
     env_file: .env
     volumes:
       - ./users/app:/app/app

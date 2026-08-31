@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from arq import create_pool
 from arq.connections import RedisSettings
 from fastapi import FastAPI
@@ -7,21 +9,19 @@ from app.core import redis
 from app.core.config import settings
 
 
-async def create_redis_pool():
+@asynccontextmanager
+async def lifespan(_: FastAPI):
     redis.pool = await create_pool(
         RedisSettings(host=settings.REDIS_HOST, port=settings.REDIS_PORT)
     )
-
-
-async def close_redis_pool():
-    redis.pool.close()
+    yield
+    # redis-py's close() is the deprecated sync shim; aclose() is the coroutine.
+    await redis.pool.aclose()
 
 
 def create_application() -> FastAPI:
-    application = FastAPI(title=settings.PROJECT_NAME)
+    application = FastAPI(title=settings.PROJECT_NAME, lifespan=lifespan)
     application.include_router(router)
-    application.add_event_handler("startup", create_redis_pool)
-    application.add_event_handler("shutdown", close_redis_pool)
     return application
 
 

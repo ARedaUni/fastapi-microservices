@@ -60,10 +60,18 @@ spec:
           env:
             - name: POSTGRES_HOST
               value: "postgres-service"
+        # Schema *and* seed. The seed used to run from the archived base
+        # image's PRE_START_PATH hook; it needs the full app env because
+        # app.core.config validates every setting at import.
         - name: perform-migrations
           image: users
-          command: ["alembic", "upgrade", "head"]
+          command:
+            ["sh", "-c", "alembic upgrade head && python scripts/initial_data.py"]
           env:
+            - name: REDIS_HOST
+              value: "redis-service"
+            - name: REDIS_PORT
+              value: "6379"
             - name: POSTGRES_HOST
               value: "postgres-service"
             - name: POSTGRES_PASSWORD
@@ -71,9 +79,26 @@ spec:
                 secretKeyRef:
                   name: postgres-credentials
                   key: password
+            - name: FIRST_USER_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: users-credentials
+                  key: email
+            - name: FIRST_USER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: users-credentials
+                  key: password
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: users-credentials
+                  key: secret_key
           envFrom:
             - configMapRef:
                 name: postgres-configuration
+            - configMapRef:
+                name: users-configuration
       containers:
         - name: users
           image: users

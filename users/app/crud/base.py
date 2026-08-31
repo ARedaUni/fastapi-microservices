@@ -1,4 +1,4 @@
-from typing import Any, Dict, Generic, List, Optional, Type, TypeVar, Union
+from typing import Any, Dict, Generic, Optional, Sequence, Type, TypeVar, Union
 
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -30,7 +30,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
 
     async def get_multi(
         self, session: AsyncSession, *args, offset: int = 0, limit: int = 100, **kwargs
-    ) -> List[ModelType]:
+    ) -> Sequence[ModelType]:
         result = await session.execute(
             select(self._model)
             .filter(*args)
@@ -46,7 +46,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         *,
         obj_in: Union[UpdateSchemaType, Dict[str, Any]],
         db_obj: Optional[ModelType] = None,
-        **kwargs
+        **kwargs,
     ) -> Optional[ModelType]:
         db_obj = db_obj or await self.get(session, **kwargs)
         if db_obj is not None:
@@ -54,7 +54,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             if isinstance(obj_in, dict):
                 update_data = obj_in
             else:
-                update_data = obj_in.dict(exclude_unset=True)
+                update_data = obj_in.model_dump(exclude_unset=True)
             for field in obj_data:
                 if field in update_data:
                     setattr(db_obj, field, update_data[field])

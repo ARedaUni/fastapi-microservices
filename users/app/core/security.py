@@ -1,8 +1,8 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from jose import jwt
-from passlib.context import CryptContext
+import bcrypt
+import jwt
 from pydantic import EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,13 +10,22 @@ from app.core.config import settings
 from app.crud.users import crud_user
 from app.models.users import User
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 ALGORITHM = "HS256"
+
+# bcrypt hashes at most 72 bytes and raises on anything longer. passlib used to
+# truncate silently, so we keep doing that; test_a_password_longer_than_72_bytes
+# _is_truncated fails if this goes away.
+BCRYPT_MAX_BYTES = 72
+
+
+def _bcrypt_bytes(password: str) -> bytes:
+    return password.encode()[:BCRYPT_MAX_BYTES]
 
 
 def create_access_token(user: User) -> str:
-    expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    expire = datetime.now(timezone.utc) + timedelta(
+        minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
+    )
     return jwt.encode(
         {"exp": expire, "user_id": str(user.id)},
         key=settings.SECRET_KEY.get_secret_value(),
@@ -25,11 +34,11 @@ def create_access_token(user: User) -> str:
 
 
 def is_valid_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    return bcrypt.checkpw(_bcrypt_bytes(plain_password), hashed_password.encode())
 
 
 def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(_bcrypt_bytes(password), bcrypt.gensalt()).decode()
 
 
 async def authenticate(

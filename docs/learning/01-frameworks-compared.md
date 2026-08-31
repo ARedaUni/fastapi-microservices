@@ -163,13 +163,16 @@ http.createServer((req, res) => { res.end('hello') })
 Structural note: **Node ships an HTTP server in its runtime; Python does not.** That's why Python needs Uvicorn/Hypercorn/Granian as a separate process, and why you see this in the Dockerfile:
 
 ```
-tiangolo/uvicorn-gunicorn-fastapi
-   └─ gunicorn (process manager, WEB_CONCURRENCY=3)
-        └─ 3 × UvicornWorker (ASGI server: httptools + uvloop)
+uvicorn app.main:app --workers 3
+   └─ uvicorn supervisor (process manager)
+        └─ 3 × uvicorn worker (ASGI server: httptools + uvloop)
              └─ your app
 ```
 
-Three processes, each with its own event loop, each with its own connection pool. Node's equivalent is `cluster` / PM2, and it's an afterthought rather than the default.
+Three processes, each with its own event loop, each with its own connection pool.
+(This used to be `tiangolo/uvicorn-gunicorn-fastapi` wrapping gunicorn. That
+image is archived; uvicorn grew its own `--workers` supervisor, so the extra
+process manager stopped earning its place.) Node's equivalent is `cluster` / PM2, and it's an afterthought rather than the default.
 
 ### The servlet (Java) and thread-per-request
 
