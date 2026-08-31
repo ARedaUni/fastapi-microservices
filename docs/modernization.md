@@ -147,7 +147,9 @@ the seed's new home in the `perform-migrations` initContainer.
   `get_current_user`. A deactivated user's unexpired token still works there.
   Documented by a test rather than changed, since this pass changes no
   behaviour.
-- **The dev `SECRET_KEY`.** PyJWT now warns that the 6-byte `secret` in
-  `.env.example` is below the 32-byte minimum for HS256. It is example data, so
-  the warning is correct and harmless — but it is the kind of thing that should
-  not survive into a real deployment.
+- **The dev `SECRET_KEY`.** PyJWT warned that the 6-byte `secret` in
+  `.env.example` was below the 32-byte minimum for HS256. Done since:
+  `Settings.SECRET_KEY` carries `min_length=32`, so a key that short stops the
+  app at startup rather than warning once per token signed. The example values
+  in `.env.example` and the k8s Secret are long enough to boot and obviously
+  placeholders. The suite went from 48 warnings to none.

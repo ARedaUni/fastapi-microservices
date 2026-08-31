@@ -1,7 +1,12 @@
-from typing import Any, Dict, Optional
+from typing import Annotated, Any, Dict, Optional
 
-from pydantic import EmailStr, SecretStr, ValidationInfo, field_validator
+from pydantic import EmailStr, Field, SecretStr, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings
+
+# RFC 7518 section 3.2: an HS256 key must be at least as long as the hash it
+# feeds, 32 bytes. PyJWT warns below that, once per token signed -- somewhere
+# nobody deploying is reading. This refuses to start instead.
+HMAC_SHA256_MIN_KEY_BYTES = 32
 
 
 class Settings(BaseSettings):
@@ -40,7 +45,7 @@ class Settings(BaseSettings):
     FIRST_USER_EMAIL: EmailStr
     FIRST_USER_PASSWORD: SecretStr
 
-    SECRET_KEY: SecretStr
+    SECRET_KEY: Annotated[SecretStr, Field(min_length=HMAC_SHA256_MIN_KEY_BYTES)]
     ACCESS_TOKEN_EXPIRE_MINUTES: int
 
     # REDIS_HOST and REDIS_PORT live in app.core.redis.RedisConfig, which the
