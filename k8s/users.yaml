@@ -27,10 +27,13 @@ kind: Secret
 metadata:
   name: users-credentials
 type: Opaque
+# Example values, checked in and therefore public. Replace all three before this
+# is deployed anywhere real. secret_key must decode to at least 32 bytes or the
+# app refuses to start: `openssl rand -hex 32 | tr -d '\n' | base64`.
 data:
   email: YWRtaW5AYWRtaW4uY29t
   password: cGFzc3dvcmQ=
-  secret_key: c2VjcmV0
+  secret_key: ZGV2LW9ubHktcGxhY2Vob2xkZXItcmVwbGFjZS1tZS13aXRoLW9wZW5zc2wtcmFuZC1oZXgtMzI=
 ---
 apiVersion: apps/v1
 kind: Deployment

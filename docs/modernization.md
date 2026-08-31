@@ -124,23 +124,37 @@ the seed's new home in the `perform-migrations` initContainer.
 
 - **SQLAlchemy 1.x `Column()` in the models.** The ORM moved to 2.0 here, but
   the models kept the 1.x declarative style, which tells a type checker
-  nothing -- `user.hashed_password` types as `Column[str]` rather than `str`.
-  Three targeted `# type: ignore`s hold the line until the
-  `Mapped[]`/`mapped_column()` migration lands, and `warn_unused_ignores` will
-  report them as unnecessary the moment it does.
+  nothing -- `user.hashed_password` typed as `Column[str]` rather than `str`.
+  Done since: the models use `Mapped[]`/`mapped_column()` on a `DeclarativeBase`,
+  `user.hashed_password` reveals as `str`, and all three `# type: ignore`s are
+  gone. `alembic check` reports no drift, so the DDL is unchanged.
 - **`Item`** — a model and a `lazy="selectin"` relationship with no schema,
-  CRUD or endpoint, costing a join on every user read. A design call.
-- **The worker's env boundary.** `app/worker.py` reads `os.getenv` directly and
-  never imports `app.core.config`, which is the only reason the cluster's
-  two-variable env doesn't fail validation at import. Fragile, but load-bearing.
+  CRUD or endpoint. Done since: model, relationship and table are gone, in a
+  reversible migration. The cost was a second round trip rather than a join —
+  `selectin` emits its own `SELECT ... IN` — and a user read now emits one
+  statement where it emitted two.
+- **The worker's env boundary.** `app/worker.py` read `os.getenv` directly and
+  never imported `app.core.config`, which was the only reason the cluster's
+  two-variable env didn't fail validation at import. Done since: the redis
+  connection is its own `RedisConfig` in `app.core.redis`, which both the worker
+  and the app's lifespan handler use, so the small env is deliberate rather than
+  accidental. The worker's `os.getenv` defaults are gone with it -- a missing
+  `REDIS_HOST` now stops the process instead of quietly dialling localhost.
 - **bcrypt blocking the event loop** on every login. Unchanged by the swap —
-  passlib was blocking too.
+  passlib was blocking too. Done since: `get_password_hash` and
+  `is_valid_password` hand bcrypt to `asyncio.to_thread`. Ten concurrent logins
+  went from 2.87s to 0.33s; before, each one held the loop for its full ~287ms.
+  Note that `async` alone would not have done this — a coroutine calling bcrypt
+  straight through never yields, and the tests in `test_security.py` fail
+  against exactly that version.
 - **`/api/v1/home/` doesn't check `is_active`.** It depends on
   `get_token_data`, which only decodes the JWT; the active check lives in
   `get_current_user`. A deactivated user's unexpired token still works there.
   Documented by a test rather than changed, since this pass changes no
   behaviour.
-- **The dev `SECRET_KEY`.** PyJWT now warns that the 6-byte `secret` in
-  `.env.example` is below the 32-byte minimum for HS256. It is example data, so
-  the warning is correct and harmless — but it is the kind of thing that should
-  not survive into a real deployment.
+- **The dev `SECRET_KEY`.** PyJWT warned that the 6-byte `secret` in
+  `.env.example` was below the 32-byte minimum for HS256. Done since:
+  `Settings.SECRET_KEY` carries `min_length=32`, so a key that short stops the
+  app at startup rather than warning once per token signed. The example values
+  in `.env.example` and the k8s Secret are long enough to boot and obviously
+  placeholders. The suite went from 48 warnings to none.

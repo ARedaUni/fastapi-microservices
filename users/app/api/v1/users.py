@@ -43,7 +43,8 @@ async def create_user(
             detail="The user with this username already exists in the system",
         )
     obj_in = UserInDB(
-        **user_in.model_dump(), hashed_password=get_password_hash(user_in.password)
+        **user_in.model_dump(),
+        hashed_password=await get_password_hash(user_in.password),
     )
     return await crud_user.create(session, obj_in)
 
@@ -82,7 +83,7 @@ async def update_user(
         )
     update_data = user_in.model_dump(exclude={"password"}, exclude_none=True)
     if user_in.password is not None:
-        update_data["hashed_password"] = get_password_hash(user_in.password)
+        update_data["hashed_password"] = await get_password_hash(user_in.password)
     try:
         user = await crud_user.update(session, db_obj=user, obj_in=update_data)
     except IntegrityError:

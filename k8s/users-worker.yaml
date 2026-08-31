@@ -17,6 +17,10 @@ spec:
       containers:
         - name: users-worker
           image: users-worker
+          # Two variables, not the app's nine, and now by design: the worker
+          # imports app.core.redis.RedisConfig, which validates only these.
+          # Importing app.core.config here would crash on the missing database
+          # and secret key.
           env:
             - name: REDIS_HOST
               value: "redis-service"

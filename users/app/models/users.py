@@ -1,14 +1,17 @@
-from sqlalchemy import Boolean, Column, Integer, String
-from sqlalchemy.orm import relationship
+from typing import Optional
+
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
 
 
 class User(Base):
-    id = Column(Integer, primary_key=True, index=True)
-    full_name = Column(String, index=True)
-    email = Column(String, unique=True, index=True, nullable=False)
-    hashed_password = Column(String, nullable=False)
-    is_active = Column(Boolean, default=True)
-    is_superuser = Column(Boolean, default=False)
-    items = relationship("Item", back_populates="owner", lazy="selectin")
+    # Optional[] where the column is nullable, which is the schema as it stands
+    # rather than a judgement about it: is_active and is_superuser have Python-side
+    # defaults but no NOT NULL behind them.
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    full_name: Mapped[Optional[str]] = mapped_column(index=True)
+    email: Mapped[str] = mapped_column(unique=True, index=True)
+    hashed_password: Mapped[str]
+    is_active: Mapped[Optional[bool]] = mapped_column(default=True)
+    is_superuser: Mapped[Optional[bool]] = mapped_column(default=False)
