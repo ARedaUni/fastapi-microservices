@@ -1,11 +1,8 @@
-from typing import TYPE_CHECKING, List, Optional
+from typing import Optional
 
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
-
-if TYPE_CHECKING:
-    from app.models.items import Item
 
 
 class User(Base):
@@ -18,4 +15,3 @@ class User(Base):
     hashed_password: Mapped[str]
     is_active: Mapped[Optional[bool]] = mapped_column(default=True)
     is_superuser: Mapped[Optional[bool]] = mapped_column(default=False)
-    items: Mapped[List["Item"]] = relationship(back_populates="owner", lazy="selectin")

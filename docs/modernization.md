@@ -129,7 +129,10 @@ the seed's new home in the `perform-migrations` initContainer.
   `user.hashed_password` reveals as `str`, and all three `# type: ignore`s are
   gone. `alembic check` reports no drift, so the DDL is unchanged.
 - **`Item`** — a model and a `lazy="selectin"` relationship with no schema,
-  CRUD or endpoint, costing a join on every user read. A design call.
+  CRUD or endpoint. Done since: model, relationship and table are gone, in a
+  reversible migration. The cost was a second round trip rather than a join —
+  `selectin` emits its own `SELECT ... IN` — and a user read now emits one
+  statement where it emitted two.
 - **The worker's env boundary.** `app/worker.py` reads `os.getenv` directly and
   never imports `app.core.config`, which is the only reason the cluster's
   two-variable env doesn't fail validation at import. Fragile, but load-bearing.
