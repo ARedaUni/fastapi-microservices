@@ -78,6 +78,7 @@ users/                  one service; the plural name is the invitation to add mo
 ├── tests/
 └── Dockerfile          one image, three targets: prod, worker, dev
 k8s/                    manifests, one file per service
+scripts/                init-databases.sql -- one database per service
 ```
 
 ## Using it as a template
@@ -102,11 +103,29 @@ k8s/                    manifests, one file per service
 
 ### Adding a second service
 
-Copy `users/` to a sibling directory, add its build and target to
-`docker-compose.yml`, and give it a `k8s/<name>.yaml` modelled on
-`k8s/users.yaml`, then add its name to the `services` list in the `Tiltfile`.
-The two services share nothing but Postgres and Redis, which is the point:
-crossing a process boundary should stay a deliberate act.
+1. **Give it a database first.** Two lines in `scripts/init-databases.sql`, and
+   the same two in the `postgres-init` ConfigMap in `k8s/postgres.yaml`:
+
+   ``` sql
+   CREATE DATABASE orders;
+   GRANT ALL PRIVILEGES ON DATABASE orders TO "user";
+   ```
+
+   One database per service, never shared. Two services in one database means
+   two Alembic histories fighting over a single `alembic_version` table — and
+   `make migrations` in either one autogenerating a `drop_table` for the
+   other's tables, because they are absent from its metadata.
+2. **Copy `users/`** to a sibling directory.
+3. **Wire it up.** Build and target in `docker-compose.yml`; a
+   `k8s/<name>.yaml` modelled on `k8s/users.yaml`, carrying its own
+   `POSTGRES_DB` in its ConfigMap; its name in the `Tiltfile` `services` list.
+4. **Trim the copy.** To verify tokens `users/` signed it needs `SECRET_KEY`
+   and `get_token_data` from `app/api/deps.py` — not `models/users.py`,
+   `crud/` or `security.py`. Verifying a JWT takes the key, not the user table,
+   and a service that reaches into another's tables is not a second service.
+
+The two share a Postgres *server* and Redis, and no data. Crossing a process
+boundary should stay a deliberate act.
 
 ## Before you deploy
 
@@ -121,6 +140,10 @@ Honest limits. Each one is a decision the template defers to you, not a bug:
 - **The checked-in secrets are examples.** `.env.example` and the `Secret` in
   `k8s/users.yaml` carry public values. Both say so; replace all of them.
 - **The health probe only covers Postgres.** Redis being down does not fail it.
+- **`init-databases.sql` runs once, against an empty data directory.** That is
+  every `make up`, since Compose keeps no Postgres volume — but the cluster's
+  PVC persists, so a database added after the first deploy needs a manual
+  `CREATE DATABASE` or a fresh volume.
 - **One replica, no HPA, no resource limits.** `k8s/` is a working development
   cluster, not a production topology.
 

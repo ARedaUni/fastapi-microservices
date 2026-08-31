@@ -24,6 +24,9 @@ metadata:
 data:
   ACCESS_TOKEN_EXPIRE_MINUTES: "10"
   PROJECT_NAME: "Users Microservice"
+  # This service's own database. One per service, never shared -- two Alembic
+  # histories in one database fight over `alembic_version`.
+  POSTGRES_DB: "users"
 ---
 apiVersion: v1
 kind: Secret

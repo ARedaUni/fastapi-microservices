@@ -4,12 +4,21 @@ services:
   postgres:
     image: postgres:12
     environment:
-      POSTGRES_DB: app
+      # The server's own bootstrap database, not any service's. Every service
+      # database is created by scripts/init-databases.sql. Left at `postgres`
+      # the entrypoint creates nothing extra, so there is no stray database
+      # that looks like it might be shared.
+      POSTGRES_DB: postgres
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
     ports: ["55432:5432"]  # avoid clashing with a local postgres
+    volumes:
+      - ./scripts/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "user", "-d", "app"]
+      # -h localhost forces TCP. During initdb the entrypoint runs a temporary
+      # server on the unix socket only, so a socket check goes green before the
+      # init scripts have created `users` and lets migrate start too early.
+      test: ["CMD", "pg_isready", "-h", "localhost", "-U", "user", "-d", "users"]
       interval: 2s
       timeout: 2s
       retries: 15
