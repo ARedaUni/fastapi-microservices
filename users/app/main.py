@@ -17,7 +17,16 @@ async def lifespan(_: FastAPI):
 
 
 def create_application() -> FastAPI:
-    application = FastAPI(title=settings.PROJECT_NAME, lifespan=lifespan)
+    # Docs live under /api with everything else: the ingress forwards that one
+    # prefix, so the public surface is whatever is mounted below it and nothing
+    # is exposed by being left at the root.
+    application = FastAPI(
+        title=settings.PROJECT_NAME,
+        lifespan=lifespan,
+        docs_url="/api/docs",
+        redoc_url="/api/redoc",
+        openapi_url="/api/openapi.json",
+    )
     application.include_router(router)
     return application
 

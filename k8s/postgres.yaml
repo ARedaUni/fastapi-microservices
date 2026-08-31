@@ -112,6 +112,8 @@ spec:
   ports:
     - port: 5432
       name: postgres
-  type: NodePort
+  # ClusterIP, not NodePort: only pods in this cluster talk to the database.
+  # NodePort put it on every node's IP.
+  type: ClusterIP
   selector:
     app: postgres

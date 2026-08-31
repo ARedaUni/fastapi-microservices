@@ -19,7 +19,7 @@ make up
 
 That brings up Postgres, Redis, the API and the arq worker, runs the migrations
 and seeds the first superuser. The API is on <http://localhost:8000>, the
-interactive docs on <http://localhost:8000/docs>.
+interactive docs on <http://localhost:8000/api/docs>.
 
 Log in as `admin@admin.com` / `password` (from `.env.example`) and you have a
 bearer token:

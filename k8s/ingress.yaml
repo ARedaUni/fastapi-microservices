@@ -10,7 +10,9 @@ spec:
     - host: users.minikube
       http:
         paths:
-          - path: /
+          # /api, not /: the whole public surface is mounted below it, so
+          # anything else the app serves is unroutable from outside.
+          - path: /api
             pathType: Prefix
             backend:
               service:
