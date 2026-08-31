@@ -19,10 +19,32 @@ The full stack of this project is composed by:
 
 ## Installation
 
-For development purposes, we're going to use [Tilt](https://tilt.dev/).
-Please install it, so we can continue.
+### Local development (Docker Compose)
 
-After installing the above, you should be able to run the following:
+Nothing to install but Docker:
+
+``` bash
+cp .env.example .env
+make up      # postgres + redis + api + worker
+make tests   # run the suite inside the api container
+make lint    # isort / flake8 / black
+```
+
+The API is on <http://localhost:8000>, docs on <http://localhost:8000/docs>.
+`make down` stops it, `make logs` tails the api, `make shell` drops you inside.
+
+`users/app` is bind-mounted, so edits reload without a rebuild. Change
+`users/requirements.txt` and you need `make up` again.
+
+Migrations run as their own `migrate` service that must exit 0 before the api
+starts — the Compose spelling of the `perform-migrations` initContainer in
+`k8s/users.yaml`. Schema changes are release-phase, not something each replica
+redoes on every restart. A failing migration stops the stack instead of booting
+the app against the wrong schema.
+
+### Kubernetes (Tilt)
+
+For a cluster-shaped environment:
 
 ``` bash
 minikube start

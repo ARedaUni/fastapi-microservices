@@ -1,0 +1,62 @@
+# Local dev loop. The k8s/Tilt setup stays the source of truth for deployment;
+# this exists so you can run and test the service without a cluster.
+services:
+  postgres:
+    image: postgres:12
+    environment:
+      POSTGRES_DB: app
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+    ports: ["55432:5432"]  # avoid clashing with a local postgres
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "user", "-d", "app"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  redis:
+    image: redis:alpine
+    ports: ["56379:6379"]
+
+  migrate:
+    build:
+      context: users
+      dockerfile: docker/backend.dockerfile
+    command: alembic upgrade head
+    env_file: .env
+    volumes:
+      - ./users/migrations:/app/migrations
+    depends_on:
+      postgres: {condition: service_healthy}
+
+  api:
+    build:
+      context: users
+      dockerfile: docker/backend.dockerfile
+    command: /start-reload.sh
+    env_file: .env
+    ports: ["8000:80"]
+    volumes:
+      - ./users/app:/app/app
+      - ./users/tests:/app/tests
+      - ./users/migrations:/app/migrations
+      - ./setup.cfg:/app/setup.cfg  # isort/flake8 config lives at the repo root
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost/api/health/')"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 30s
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_started}
+
+  worker:
+    build:
+      context: users
+      dockerfile: docker/worker.dockerfile
+    env_file: .env
+    volumes:
+      - ./users/app:/app/app
+    depends_on:
+      redis: {condition: service_started}
