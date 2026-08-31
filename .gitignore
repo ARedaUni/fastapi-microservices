@@ -3,3 +3,6 @@ __pycache__
 
 # Skaffold
 tags.json
+
+# Local env
+.env
