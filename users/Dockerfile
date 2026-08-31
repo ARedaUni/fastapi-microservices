@@ -1,7 +1,7 @@
 # One image, three tails: the API, the arq worker, and a dev variant that also
 # carries the test and lint tooling. `prod` is last so an untargeted build gets
 # the lean image.
-FROM python:3.8-slim AS base
+FROM python:3.13-slim AS base
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \

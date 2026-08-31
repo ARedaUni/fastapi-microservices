@@ -1,6 +1,6 @@
+import jwt
 from fastapi import Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
-from jose import jwt
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,7 +24,7 @@ def get_token_data(token: str = Depends(oauth2)) -> TokenPayload:
         secret_key = settings.SECRET_KEY.get_secret_value()
         payload = jwt.decode(token, secret_key, algorithms=[ALGORITHM])
         token_data = TokenPayload(**payload)
-    except (jwt.JWTError, ValidationError):
+    except (jwt.PyJWTError, ValidationError):
         raise HTTPException(status_code=403, detail="Could not validate credentials")
     return token_data
 

@@ -9,4 +9,4 @@ class Token(BaseModel):
 
 
 class TokenPayload(BaseModel):
-    user_id: Optional[int]
+    user_id: Optional[int] = None

@@ -41,7 +41,6 @@ services:
       - ./users/app:/app/app
       - ./users/tests:/app/tests
       - ./users/migrations:/app/migrations
-      - ./setup.cfg:/app/setup.cfg  # mypy/coverage config lives at the repo root
       - ./users/pyproject.toml:/app/pyproject.toml
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost/api/health/')"]

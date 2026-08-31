@@ -3,8 +3,8 @@ import os
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import engine_from_config, pool
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy import pool
+from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from app import models  # noqa: F401
 from app.models.base import Base  # noqa: F401
@@ -23,7 +23,6 @@ fileConfig(config.config_file_name)
 # target_metadata = mymodel.Base.metadata
 target_metadata = Base.metadata
 
-print(target_metadata.tables.keys())
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
 # my_important_option = config.get_main_option("my_important_option")
@@ -81,16 +80,15 @@ async def run_migrations_online():
     and associate a connection with the context.
 
     """
-    configuration = config.get_section(config.config_ini_section)
+    configuration = config.get_section(config.config_ini_section) or {}
     configuration["sqlalchemy.url"] = get_url()
-    connectable = AsyncEngine(
-        engine_from_config(
-            configuration, prefix="sqlalchemy.", poolclass=pool.NullPool, future=True
-        )
+    connectable = async_engine_from_config(
+        configuration, prefix="sqlalchemy.", poolclass=pool.NullPool
     )
 
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
+    await connectable.dispose()
 
 
 if context.is_offline_mode():

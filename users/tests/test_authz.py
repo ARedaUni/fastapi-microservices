@@ -7,6 +7,7 @@ Every assertion here documents behaviour the service has *today*.
 from datetime import datetime, timedelta, timezone
 from typing import Dict
 
+import jwt
 import pytest
 from httpx import AsyncClient
 
@@ -15,8 +16,6 @@ from app.core.security import ALGORITHM
 
 
 def _encode(payload: Dict) -> str:
-    from jose import jwt
-
     return jwt.encode(
         payload, key=settings.SECRET_KEY.get_secret_value(), algorithm=ALGORITHM
     )

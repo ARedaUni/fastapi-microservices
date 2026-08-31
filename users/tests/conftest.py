@@ -1,9 +1,8 @@
-import asyncio
 from typing import Dict
 
 import pytest
 from asgi_lifespan import LifespanManager
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
 from app.api.deps import get_session
@@ -30,17 +29,13 @@ async def override_dependency(session: AsyncSession):
     app.dependency_overrides[get_session] = lambda: session
 
 
-@pytest.fixture(scope="session", autouse=True)
-def event_loop():
-    """Reference: https://github.com/pytest-dev/pytest-asyncio/issues/38#issuecomment-264418154"""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
-
-
 @pytest.fixture()
 async def client():
-    async with AsyncClient(app=app, base_url="http://test") as ac, LifespanManager(app):
+    transport = ASGITransport(app=app)
+    async with (
+        AsyncClient(transport=transport, base_url="http://test") as ac,
+        LifespanManager(app),
+    ):
         yield ac
 
 

@@ -1,6 +1,6 @@
 [tool.ruff]
 line-length = 88
-target-version = "py38"
+target-version = "py313"
 
 [tool.ruff.lint]
 # E/W/F is what flake8 was checking; I replaces isort, and F401 replaces the
@@ -13,3 +13,17 @@ known-first-party = ["app"]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
+
+[tool.pytest.ini_options]
+# One loop for the whole session: the engine is a module-level global, so its
+# pooled asyncpg connections must not outlive the loop that opened them.
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+
+[tool.mypy]
+follow_imports = "skip"
+
+[tool.coverage.run]
+# Reference: https://github.com/nedbat/coveragepy/issues/1082
+concurrency = ["greenlet"]

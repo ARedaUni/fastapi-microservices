@@ -1,6 +1,7 @@
 from typing import Any, Dict, Optional
 
-from pydantic import BaseSettings, EmailStr, SecretStr, validator
+from pydantic import EmailStr, SecretStr, ValidationInfo, field_validator
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -10,13 +11,16 @@ class Settings(BaseSettings):
     POSTGRES_HOST: str
     POSTGRES_USER: str
     POSTGRES_PASSWORD: SecretStr
-    # TODO(Marcelo): Change type once https://github.com/samuelcolvin/pydantic/pull/2567 is merged.
+    # Stays a plain str rather than PostgresDsn: the Dsn types normalise what
+    # they parse, and create_async_engine gets handed this verbatim.
     POSTGRES_URI: Optional[str] = None
 
-    @validator("POSTGRES_URI", pre=True)
-    def validate_postgres_conn(cls, v: Optional[str], values: Dict[str, Any]) -> str:
+    @field_validator("POSTGRES_URI", mode="before")
+    @classmethod
+    def validate_postgres_conn(cls, v: Optional[str], info: ValidationInfo) -> str:
         if isinstance(v, str):
             return v
+        values: Dict[str, Any] = info.data
         password: SecretStr = values.get("POSTGRES_PASSWORD", SecretStr(""))
         return "{scheme}://{user}:{password}@{host}/{db}".format(
             scheme="postgresql+asyncpg",
