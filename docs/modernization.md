@@ -117,10 +117,17 @@ the seed's new home in the `perform-migrations` initContainer.
 
 ## Deferred, deliberately
 
-- **mypy config.** `follow_imports = skip` still suppresses nearly everything,
-  and nothing invokes mypy. The config carried over to `pyproject.toml`
-  unchanged. Now that the code is Pydantic v2, configuring it for real is a
-  self-contained next piece of work rather than work done twice.
+- **mypy config.** Deferred out of this branch because configuring it against
+  Pydantic v1 code that was about to become v2 meant doing the work twice.
+  Done since: `follow_imports = "skip"` is gone, `make lint` runs mypy, and CI
+  runs `make lint`.
+
+- **SQLAlchemy 1.x `Column()` in the models.** The ORM moved to 2.0 here, but
+  the models kept the 1.x declarative style, which tells a type checker
+  nothing -- `user.hashed_password` types as `Column[str]` rather than `str`.
+  Three targeted `# type: ignore`s hold the line until the
+  `Mapped[]`/`mapped_column()` migration lands, and `warn_unused_ignores` will
+  report them as unnecessary the moment it does.
 - **`Item`** — a model and a `lazy="selectin"` relationship with no schema,
   CRUD or endpoint, costing a join on every user read. A design call.
 - **The worker's env boundary.** `app/worker.py` reads `os.getenv` directly and

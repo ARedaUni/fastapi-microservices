@@ -8,7 +8,7 @@ help: ## Show this help
 .PHONY: lint
 lint:  ## Linter code
 	@echo "🚨 Linting code..."
-	@docker compose exec -T api sh -c 'ruff check app tests && ruff format --check app tests'
+	@docker compose exec -T api sh -c 'ruff check app tests && ruff format --check app tests && mypy app tests'
 
 
 .PHONY: format
