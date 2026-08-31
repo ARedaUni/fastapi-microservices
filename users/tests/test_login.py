@@ -1,11 +1,11 @@
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
+from httpx import AsyncClient
 
 from app.core.config import settings
 
 
 @pytest.mark.asyncio()
-async def test_login(client: AsyncSession):
+async def test_login(client: AsyncClient):
     login_data = {
         "username": settings.FIRST_USER_EMAIL,
         "password": settings.FIRST_USER_PASSWORD.get_secret_value(),

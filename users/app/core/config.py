@@ -13,12 +13,19 @@ class Settings(BaseSettings):
     POSTGRES_PASSWORD: SecretStr
     # Stays a plain str rather than PostgresDsn: the Dsn types normalise what
     # they parse, and create_async_engine gets handed this verbatim.
-    POSTGRES_URI: Optional[str] = None
+    #
+    # Declared `str`, not `Optional[str]`: the validator below always returns one,
+    # and pydantic-settings runs before-validators over the default too, so this
+    # is never None once the model is built. Saying `Optional` made every caller
+    # -- create_async_engine among them -- carry a None case that cannot happen.
+    POSTGRES_URI: str = ""
 
     @field_validator("POSTGRES_URI", mode="before")
     @classmethod
     def validate_postgres_conn(cls, v: Optional[str], info: ValidationInfo) -> str:
-        if isinstance(v, str):
+        # Truthy, not isinstance: the unset default is now "" rather than None,
+        # and an empty string has to fall through to be built like a missing one.
+        if v:
             return v
         values: Dict[str, Any] = info.data
         password: SecretStr = values.get("POSTGRES_PASSWORD", SecretStr(""))
@@ -40,4 +47,8 @@ class Settings(BaseSettings):
     REDIS_PORT: int
 
 
-settings = Settings()
+# pydantic-settings populates every field from the environment, but mypy sees a
+# no-argument call against a model whose fields are required and reports one
+# `call-arg` per field. Neither the mypy nor the pydantic docs cover the case, so
+# this takes mypy's documented route: ignore the one code, on the one line.
+settings = Settings()  # type: ignore[call-arg]

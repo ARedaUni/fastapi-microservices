@@ -4,7 +4,11 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-ModelType = TypeVar("ModelType")
+from app.models.base import Base
+
+# Bounded, not bare: every model this is parametrised with is a Base subclass,
+# and update() calls db_obj.dict(), which only Base defines.
+ModelType = TypeVar("ModelType", bound=Base)
 CreateSchemaType = TypeVar("CreateSchemaType", bound=BaseModel)
 UpdateSchemaType = TypeVar("UpdateSchemaType", bound=BaseModel)
 
@@ -64,7 +68,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
 
     async def delete(
         self, session: AsyncSession, *args, db_obj: Optional[ModelType] = None, **kwargs
-    ) -> ModelType:
+    ) -> Optional[ModelType]:
         db_obj = db_obj or await self.get(session, *args, **kwargs)
         await session.delete(db_obj)
         await session.commit()
