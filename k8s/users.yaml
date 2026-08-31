@@ -5,7 +5,10 @@ metadata:
   labels:
     app: users
 spec:
-  type: NodePort
+  # ClusterIP, not NodePort: the Ingress reaches this from inside the cluster,
+  # and Tilt's port_forwards goes to the pod. A node port would publish the
+  # service on every node's IP for nobody's benefit.
+  type: ClusterIP
   ports:
     - targetPort: 80
       port: 80
@@ -21,6 +24,9 @@ metadata:
 data:
   ACCESS_TOKEN_EXPIRE_MINUTES: "10"
   PROJECT_NAME: "Users Microservice"
+  # This service's own database. One per service, never shared -- two Alembic
+  # histories in one database fight over `alembic_version`.
+  POSTGRES_DB: "users"
 ---
 apiVersion: v1
 kind: Secret

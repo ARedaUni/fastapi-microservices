@@ -483,7 +483,7 @@ That last row is the point. Slots 1–7 are framework concerns. Everything inter
 
 2. **Find the Guard.** Locate every place in `app/api/` that implements Nest's Guard concept. Then find the place that should have an Exception Filter and doesn't. (Hint: `app/api/v1/users.py:89`.)
 
-3. **Prove the metadata channel.** Add `full_name: str` to `UserOut` and hit `/docs`. Observe that one annotation changed the validator, the serialiser, and the OpenAPI schema simultaneously. Then try to imagine doing the same in Express.
+3. **Prove the metadata channel.** Add `full_name: str` to `UserOut` and hit `/api/docs`. Observe that one annotation changed the validator, the serialiser, and the OpenAPI schema simultaneously. Then try to imagine doing the same in Express.
 
 4. **Break the response filter.** Temporarily change `response_model=List[UserOut]` to nothing on `read_users` and hit the endpoint. Watch `hashed_password` appear in the JSON. That's slot 5 earning its keep.
 

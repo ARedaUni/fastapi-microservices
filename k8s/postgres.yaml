@@ -6,8 +6,23 @@ metadata:
   labels:
     app: postgres
 data:
-  POSTGRES_DB: "app"
+  # POSTGRES_DB deliberately absent. Both the server and every client read this
+  # ConfigMap, and they need different answers: the server wants its bootstrap
+  # database, each service wants its own. Each now says so for itself.
   POSTGRES_USER: "user"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  labels:
+    app: postgres
+# Mirrors scripts/init-databases.sql, which Compose mounts directly. Keep the
+# two in step; a service added to one and not the other fails on first deploy.
+data:
+  init-databases.sql: |
+    CREATE DATABASE users;
+    GRANT ALL PRIVILEGES ON DATABASE users TO "user";
 ---
 apiVersion: v1
 kind: Secret
@@ -70,6 +85,11 @@ spec:
             - configMapRef:
                 name: postgres-configuration
           env:
+            # The server's bootstrap database, not any service's. At `postgres`
+            # the entrypoint creates nothing extra, so the only databases that
+            # exist are the ones init-databases.sql asks for.
+            - name: POSTGRES_DB
+              value: "postgres"
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -81,6 +101,9 @@ spec:
           volumeMounts:
             - name: postgres-volume-mount
               mountPath: /var/lib/postgresql/data
+            - name: postgres-init
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
           readinessProbe:
             exec:
               command:
@@ -103,6 +126,9 @@ spec:
         - name: postgres-volume-mount
           persistentVolumeClaim:
             claimName: postgres-pvc
+        - name: postgres-init
+          configMap:
+            name: postgres-init
 ---
 apiVersion: v1
 kind: Service
@@ -112,6 +138,8 @@ spec:
   ports:
     - port: 5432
       name: postgres
-  type: NodePort
+  # ClusterIP, not NodePort: only pods in this cluster talk to the database.
+  # NodePort put it on every node's IP.
+  type: ClusterIP
   selector:
     app: postgres
