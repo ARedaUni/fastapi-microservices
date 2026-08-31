@@ -53,3 +53,28 @@ async def superuser_token_headers(client: AsyncClient) -> Dict[str, str]:
     res = await client.post("/api/v1/login/", data=login_data)
     access_token = res.json()["access_token"]
     return {"Authorization": f"Bearer {access_token}"}
+
+
+@pytest.fixture()
+async def normal_user(
+    client: AsyncClient, superuser_token_headers: Dict[str, str]
+) -> Dict[str, str]:
+    """A non-superuser, created through the API so the password hash is real."""
+    credentials = {"email": "normal@example.com", "password": "normal-password"}
+    res = await client.post(
+        "/api/v1/users/", json=credentials, headers=superuser_token_headers
+    )
+    assert res.status_code == 200, res.json()
+    return {**credentials, "id": res.json()["id"]}
+
+
+@pytest.fixture()
+async def normal_user_token_headers(
+    client: AsyncClient, normal_user: Dict[str, str]
+) -> Dict[str, str]:
+    res = await client.post(
+        "/api/v1/login/",
+        data={"username": normal_user["email"], "password": normal_user["password"]},
+    )
+    assert res.status_code == 200, res.json()
+    return {"Authorization": f"Bearer {res.json()['access_token']}"}

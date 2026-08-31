@@ -80,15 +80,11 @@ async def update_user(
             status_code=404,
             detail="The user with this username does not exist in the system",
         )
+    update_data = user_in.dict(exclude={"password"}, exclude_none=True)
+    if user_in.password is not None:
+        update_data["hashed_password"] = get_password_hash(user_in.password)
     try:
-        user = await crud_user.update(
-            session,
-            db_obj=user,
-            obj_in={
-                **user_in.dict(exclude={"password"}, exclude_none=True),
-                "hashed_password": get_password_hash(user_in.password),
-            },
-        )
+        user = await crud_user.update(session, db_obj=user, obj_in=update_data)
     except IntegrityError:
         raise HTTPException(
             status_code=409, detail="User with this username already exits"
