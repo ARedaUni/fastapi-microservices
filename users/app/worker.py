@@ -1,14 +1,10 @@
 import asyncio
-import os
 
 import uvloop
-from arq.connections import RedisSettings
+
+from app.core.redis import redis_config
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-
-# NOTE(Marcelo): Do we want to have the same environment variables on worker and app?
-REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
-REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 
 
 async def test_task(ctx, word: str):
@@ -26,7 +22,7 @@ async def shutdown(ctx):
 
 class WorkerSettings:
     functions = [test_task]
-    redis_settings = RedisSettings(host=REDIS_HOST, port=REDIS_PORT)
+    redis_settings = redis_config.arq()
     on_startup = startup
     on_shutdown = shutdown
     handle_signals = False

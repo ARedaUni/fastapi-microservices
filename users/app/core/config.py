@@ -43,8 +43,8 @@ class Settings(BaseSettings):
     SECRET_KEY: SecretStr
     ACCESS_TOKEN_EXPIRE_MINUTES: int
 
-    REDIS_HOST: str
-    REDIS_PORT: int
+    # REDIS_HOST and REDIS_PORT live in app.core.redis.RedisConfig, which the
+    # worker imports without this class and everything it requires.
 
 
 # pydantic-settings populates every field from the environment, but mypy sees a

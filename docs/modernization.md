@@ -133,9 +133,13 @@ the seed's new home in the `perform-migrations` initContainer.
   reversible migration. The cost was a second round trip rather than a join —
   `selectin` emits its own `SELECT ... IN` — and a user read now emits one
   statement where it emitted two.
-- **The worker's env boundary.** `app/worker.py` reads `os.getenv` directly and
-  never imports `app.core.config`, which is the only reason the cluster's
-  two-variable env doesn't fail validation at import. Fragile, but load-bearing.
+- **The worker's env boundary.** `app/worker.py` read `os.getenv` directly and
+  never imported `app.core.config`, which was the only reason the cluster's
+  two-variable env didn't fail validation at import. Done since: the redis
+  connection is its own `RedisConfig` in `app.core.redis`, which both the worker
+  and the app's lifespan handler use, so the small env is deliberate rather than
+  accidental. The worker's `os.getenv` defaults are gone with it -- a missing
+  `REDIS_HOST` now stops the process instead of quietly dialling localhost.
 - **bcrypt blocking the event loop** on every login. Unchanged by the swap —
   passlib was blocking too.
 - **`/api/v1/home/` doesn't check `is_active`.** It depends on
