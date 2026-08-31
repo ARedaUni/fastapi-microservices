@@ -124,10 +124,10 @@ the seed's new home in the `perform-migrations` initContainer.
 
 - **SQLAlchemy 1.x `Column()` in the models.** The ORM moved to 2.0 here, but
   the models kept the 1.x declarative style, which tells a type checker
-  nothing -- `user.hashed_password` types as `Column[str]` rather than `str`.
-  Three targeted `# type: ignore`s hold the line until the
-  `Mapped[]`/`mapped_column()` migration lands, and `warn_unused_ignores` will
-  report them as unnecessary the moment it does.
+  nothing -- `user.hashed_password` typed as `Column[str]` rather than `str`.
+  Done since: the models use `Mapped[]`/`mapped_column()` on a `DeclarativeBase`,
+  `user.hashed_password` reveals as `str`, and all three `# type: ignore`s are
+  gone. `alembic check` reports no drift, so the DDL is unchanged.
 - **`Item`** — a model and a `lazy="selectin"` relationship with no schema,
   CRUD or endpoint, costing a join on every user read. A design call.
 - **The worker's env boundary.** `app/worker.py` reads `os.getenv` directly and

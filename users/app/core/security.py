@@ -45,11 +45,6 @@ async def authenticate(
     session: AsyncSession, email: EmailStr, password: str
 ) -> Optional[User]:
     user = await crud_user.get(session, email=email)
-    # user.hashed_password types as Column[str] under 1.x-style Column(); see the
-    # note in models/base.py.
-    if user is not None and is_valid_password(
-        password,
-        user.hashed_password,  # type: ignore[arg-type]
-    ):
+    if user is not None and is_valid_password(password, user.hashed_password):
         return user
     return None
