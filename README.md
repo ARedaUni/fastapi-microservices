@@ -27,7 +27,7 @@ Nothing to install but Docker:
 cp .env.example .env
 make up      # postgres + redis + api + worker
 make tests   # run the suite inside the api container
-make lint    # isort / flake8 / black
+make lint    # ruff check + ruff format --check
 ```
 
 The API is on <http://localhost:8000>, docs on <http://localhost:8000/docs>.
@@ -36,8 +36,8 @@ The API is on <http://localhost:8000>, docs on <http://localhost:8000/docs>.
 `users/app` is bind-mounted, so edits reload without a rebuild. Change
 `users/requirements.txt` and you need `make up` again.
 
-Migrations run as their own `migrate` service that must exit 0 before the api
-starts — the Compose spelling of the `perform-migrations` initContainer in
+Migrations and the first-superuser seed run as their own `migrate` service that
+must exit 0 before the api starts — the Compose spelling of the `perform-migrations` initContainer in
 `k8s/users.yaml`. Schema changes are release-phase, not something each replica
 redoes on every restart. A failing migration stops the stack instead of booting
 the app against the wrong schema.
