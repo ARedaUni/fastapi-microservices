@@ -8,7 +8,7 @@ asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 # NOTE(Marcelo): Do we want to have the same environment variables on worker and app?
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
-REDIS_PORT = os.getenv("REDIS_PORT", 6379)
+REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 
 
 async def test_task(ctx, word: str):

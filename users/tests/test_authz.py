@@ -3,7 +3,7 @@
 These exist to catch behaviour changes during the dependency modernization.
 Every assertion here documents behaviour the service has *today*.
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict
 
 import pytest
@@ -57,7 +57,7 @@ async def test_protected_route_with_a_malformed_token_is_forbidden(client: Async
 @pytest.mark.asyncio
 async def test_protected_route_with_an_expired_token_is_forbidden(client: AsyncClient):
     expired = _encode(
-        {"exp": datetime(2020, 1, 1) + timedelta(minutes=1), "user_id": "1"}
+        {"exp": datetime(2020, 1, 1, tzinfo=timezone.utc), "user_id": "1"}
     )
     res = await client.get(
         "/api/v1/home/", headers={"Authorization": f"Bearer {expired}"}
@@ -68,7 +68,7 @@ async def test_protected_route_with_an_expired_token_is_forbidden(client: AsyncC
 @pytest.mark.asyncio
 async def test_token_for_a_deleted_user_is_not_found(client: AsyncClient):
     orphan = _encode(
-        {"exp": datetime.utcnow() + timedelta(minutes=5), "user_id": "999999"}
+        {"exp": datetime.now(timezone.utc) + timedelta(minutes=5), "user_id": "999999"}
     )
     res = await client.get(
         "/api/v1/users/999999/", headers={"Authorization": f"Bearer {orphan}"}
