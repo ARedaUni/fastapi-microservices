@@ -41,7 +41,8 @@ services:
       - ./users/app:/app/app
       - ./users/tests:/app/tests
       - ./users/migrations:/app/migrations
-      - ./setup.cfg:/app/setup.cfg  # isort/flake8 config lives at the repo root
+      - ./setup.cfg:/app/setup.cfg  # mypy/coverage config lives at the repo root
+      - ./users/pyproject.toml:/app/pyproject.toml
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost/api/health/')"]
       interval: 3s

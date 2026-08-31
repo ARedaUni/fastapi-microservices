@@ -3,6 +3,7 @@
 These exist to catch behaviour changes during the dependency modernization.
 Every assertion here documents behaviour the service has *today*.
 """
+
 from datetime import datetime, timedelta, timezone
 from typing import Dict
 

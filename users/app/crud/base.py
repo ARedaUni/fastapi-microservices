@@ -46,7 +46,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         *,
         obj_in: Union[UpdateSchemaType, Dict[str, Any]],
         db_obj: Optional[ModelType] = None,
-        **kwargs
+        **kwargs,
     ) -> Optional[ModelType]:
         db_obj = db_obj or await self.get(session, **kwargs)
         if db_obj is not None:

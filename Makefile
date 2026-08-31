@@ -8,13 +8,13 @@ help: ## Show this help
 .PHONY: lint
 lint:  ## Linter code
 	@echo "🚨 Linting code..."
-	@docker compose exec -T api sh -c 'isort app --check && flake8 app tests && black app tests --check'
+	@docker compose exec -T api sh -c 'ruff check app tests && ruff format --check app tests'
 
 
 .PHONY: format
 format:  ## Format code
 	@echo "🎨 Formatting code..."
-	@docker compose exec -T api sh -c 'isort app && autoflake --remove-all-unused-imports --recursive --remove-unused-variables --in-place app tests --exclude=__init__.py && black app tests'
+	@docker compose exec -T api sh -c 'ruff check --fix app tests && ruff format app tests'
 
 
 .PHONY: tests

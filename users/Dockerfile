@@ -27,6 +27,7 @@ CMD ["arq", "app.worker.WorkerSettings"]
 FROM base AS dev
 COPY ./requirements-dev.txt /app/requirements-dev.txt
 RUN pip install -r requirements-dev.txt
+COPY ./pyproject.toml /app/pyproject.toml
 COPY ./tests /app/tests
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "80", "--reload"]
 

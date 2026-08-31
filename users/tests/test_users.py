@@ -1,4 +1,5 @@
 """User endpoint behaviour, including the paths the upgrade must preserve."""
+
 from typing import Dict
 
 import pytest
