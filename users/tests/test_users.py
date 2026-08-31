@@ -125,3 +125,32 @@ async def test_deleting_a_missing_user_is_not_found(
 ):
     res = await client.delete("/api/v1/users/999999/", headers=superuser_token_headers)
     assert res.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_a_password_longer_than_72_bytes_is_truncated(
+    client: AsyncClient, superuser_token_headers: Dict[str, str]
+):
+    """bcrypt only reads the first 72 bytes; passlib truncates silently.
+
+    Pinned because the passlib -> bcrypt swap must not start rejecting these.
+    """
+    long_password = "x" * 100
+    created = await client.post(
+        "/api/v1/users/",
+        json={"email": "long@example.com", "password": long_password},
+        headers=superuser_token_headers,
+    )
+    assert created.status_code == 200, created.json()
+
+    full = await client.post(
+        "/api/v1/login/",
+        data={"username": "long@example.com", "password": long_password},
+    )
+    assert full.status_code == 200, full.json()
+
+    truncated = await client.post(
+        "/api/v1/login/",
+        data={"username": "long@example.com", "password": long_password[:72]},
+    )
+    assert truncated.status_code == 200, "the first 72 bytes are what is checked"
