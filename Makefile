@@ -8,13 +8,13 @@ help: ## Show this help
 .PHONY: lint
 lint:  ## Linter code
 	@echo "🚨 Linting code..."
-	@docker compose exec -T api sh -c 'ruff check app tests && ruff format --check app tests && mypy app tests'
+	@docker compose exec -T api sh -c 'ruff check app tests load && ruff format --check app tests load && mypy app tests'
 
 
 .PHONY: format
 format:  ## Format code
 	@echo "🎨 Formatting code..."
-	@docker compose exec -T api sh -c 'ruff check --fix app tests && ruff format app tests'
+	@docker compose exec -T api sh -c 'ruff check --fix app tests load && ruff format app tests load'
 
 
 .PHONY: tests
@@ -46,3 +46,15 @@ logs:  ## Tail the api logs
 .PHONY: shell
 shell:  ## Shell into the api container
 	@docker compose exec api bash
+
+
+.PHONY: load
+load:  ## Load-test the api, web UI on http://localhost:8089
+	@docker compose --profile load up locust
+
+
+.PHONY: load-headless
+load-headless:  ## Load-test and print a summary - `u`, `r`, `t`, `class` override
+	@docker compose --profile load run --rm locust \
+		-f /mnt/locust/locustfile.py --host http://api --headless \
+		-u $(or $(u),50) -r $(or $(r),10) -t $(or $(t),30s) $(or $(class),ReadUser)
