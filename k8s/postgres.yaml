@@ -23,6 +23,9 @@ data:
   init-databases.sql: |
     CREATE DATABASE users;
     GRANT ALL PRIVILEGES ON DATABASE users TO "user";
+
+    CREATE DATABASE canvas;
+    GRANT ALL PRIVILEGES ON DATABASE canvas TO "user";
 ---
 apiVersion: v1
 kind: Secret
