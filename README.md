@@ -79,6 +79,7 @@ users/                  one service; the plural name is the invitation to add mo
 └── Dockerfile          one image, three targets: prod, worker, dev
 k8s/                    manifests, one file per service
 scripts/                init-databases.sql -- one database per service
+load/                   locust scenarios; `make load`, never started by `make up`
 ```
 
 ## Using it as a template
@@ -175,10 +176,41 @@ app against the wrong schema.
 | `make migrations msg="..."` | Autogenerate a migration |
 | `make logs` | Tail the api |
 | `make shell` | Bash inside the api container |
+| `make load` | Load-test the api; web UI on <http://localhost:8089> |
+| `make load-headless` | Load-test and print percentiles, then exit |
 | `make help` | This table, from the Makefile itself |
 
 CI runs `make up`, `make lint` and `make tests` — the same three commands, on
 the same stack. A green pipeline and a working laptop mean the same thing.
+
+### Load testing
+
+`load/locustfile.py` holds two user classes, and you pick one per run:
+
+| Class | What it does | What it finds |
+|---|---|---|
+| `ReadUser` | Logs in once, then reads | The read ceiling |
+| `LoginUser` | Nothing but logins, no think time | The bcrypt ceiling |
+
+``` bash
+make load                                      # web UI, pick the class there
+make load-headless u=300 r=50 t=45s            # 300 users, 50/s ramp, 45 seconds
+make load-headless class=LoginUser u=50 t=20s
+```
+
+The read mix is a ladder in database work per request — `/api/v1/home/` runs no
+query, `/api/v1/users/{id}/` one, `/api/v1/users/` two — so a run says which
+layer saturated, not only that latency rose.
+
+Three things that would otherwise surprise you:
+
+- **`make load-headless` exits non-zero when any request failed.** That is
+  locust's own convention, and it makes the target usable as a gate. It is not
+  the tooling breaking.
+- **You are loading the `dev` target** — one uvicorn process with `--reload`.
+  `prod` runs three workers, so these numbers are pessimistic for the read path.
+- **The `locust` service sits behind a Compose profile**, so `make up` and CI
+  never start it. `docker compose --profile load` is what reaches it.
 
 ## Credits
 

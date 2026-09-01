@@ -49,6 +49,9 @@ services:
     volumes:
       - ./users/app:/app/app
       - ./users/tests:/app/tests
+      # Not the api's code -- mounted so `make lint` reaches the locustfile.
+      # ruff covers it; mypy doesn't, since locust isn't installed here.
+      - ./load:/app/load
       - ./users/migrations:/app/migrations
       - ./users/pyproject.toml:/app/pyproject.toml
     healthcheck:
@@ -70,3 +73,17 @@ services:
       - ./users/app:/app/app
     depends_on:
       redis: {condition: service_started}
+
+  # Load generator. Behind a profile, so `make up` and CI never start it --
+  # `docker compose up` skips profiled services unless the profile is named.
+  locust:
+    image: locustio/locust:2.46.4
+    profiles: ["load"]
+    env_file: .env  # FIRST_USER_EMAIL / FIRST_USER_PASSWORD, the seeded superuser
+    volumes:
+      - ./load:/mnt/locust:ro
+    ports: ["8089:8089"]
+    # `http://api` is port 80 inside the network; 8000 is only the host mapping.
+    command: -f /mnt/locust/locustfile.py --host http://api --class-picker ReadUser
+    depends_on:
+      api: {condition: service_healthy}
