@@ -74,6 +74,49 @@ services:
     depends_on:
       redis: {condition: service_started}
 
+  # --- canvas: the second service. Its own database, no shared tables. ---
+  #
+  # Both canvas services override two variables from the shared .env: the
+  # database, because one Alembic history per database is the rule the whole
+  # repo is built on, and the title, because it shows up in /api/docs.
+  canvas-migrate:
+    build:
+      context: canvas
+      target: prod
+    # Schema only -- unlike users/, there is no seed. A canvas starts empty.
+    command: alembic upgrade head
+    env_file: .env
+    environment:
+      POSTGRES_DB: canvas
+    volumes:
+      - ./canvas/migrations:/app/migrations
+    depends_on:
+      postgres: {condition: service_healthy}
+
+  canvas-api:
+    build:
+      context: canvas
+      target: dev
+    env_file: .env
+    environment:
+      PROJECT_NAME: Canvas Microservice
+      POSTGRES_DB: canvas
+    ports: ["8001:80"]  # 8000 is users
+    volumes:
+      - ./canvas/app:/app/app
+      - ./canvas/tests:/app/tests
+      - ./canvas/migrations:/app/migrations
+      - ./canvas/pyproject.toml:/app/pyproject.toml
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost/api/health/')"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 30s
+    depends_on:
+      canvas-migrate: {condition: service_completed_successfully}
+    # No redis dependency: nothing here enqueues a job until stage 2.
+
   # Load generator. Behind a profile, so `make up` and CI never start it --
   # `docker compose up` skips profiled services unless the profile is named.
   locust:

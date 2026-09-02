@@ -9,27 +9,30 @@ help: ## Show this help
 lint:  ## Linter code
 	@echo "🚨 Linting code..."
 	@docker compose exec -T api sh -c 'ruff check app tests load && ruff format --check app tests load && mypy app tests'
+	@docker compose exec -T canvas-api sh -c 'ruff check app tests && ruff format --check app tests && mypy app tests'
 
 
 .PHONY: format
 format:  ## Format code
 	@echo "🎨 Formatting code..."
 	@docker compose exec -T api sh -c 'ruff check --fix app tests load && ruff format app tests load'
+	@docker compose exec -T canvas-api sh -c 'ruff check --fix app tests && ruff format app tests'
 
 
 .PHONY: tests
 tests:  ## Run tests
 	@echo "🍜 Running tests..."
 	@docker compose exec -T api pytest -v tests --cov app --cov-report=term-missing:skip-covered --cov-fail-under 69
+	@docker compose exec -T canvas-api pytest -v tests --cov app --cov-report=term-missing:skip-covered --cov-fail-under 90
 
 
 .PHONY: migrations
-migrations:  ## Generate a migration - `msg` parameter is needed
-	@docker compose exec -T api alembic revision --autogenerate -m "$(msg)"
+migrations:  ## Generate a migration - `msg` needed, `svc` defaults to api
+	@docker compose exec -T $(or $(svc),api) alembic revision --autogenerate -m "$(msg)"
 
 
 .PHONY: up
-up:  ## Start the local stack (postgres, redis, api, worker)
+up:  ## Start the local stack (postgres, redis, users, canvas)
 	@docker compose up -d --build --wait
 
 

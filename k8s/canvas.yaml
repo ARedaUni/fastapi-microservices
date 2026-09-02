@@ -1,0 +1,99 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: canvas-service
+  labels:
+    app: canvas
+spec:
+  type: ClusterIP
+  ports:
+    - targetPort: 80
+      port: 80
+  selector:
+    app: canvas
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: canvas-configuration
+  labels:
+    app: canvas
+data:
+  PROJECT_NAME: "Canvas Microservice"
+  # This service's own database. One per service, never shared -- two Alembic
+  # histories in one database fight over `alembic_version`.
+  POSTGRES_DB: "canvas"
+---
+# No Secret here, and that absence is the point. users/ needs one for
+# SECRET_KEY and the seeded first user; this service signs nothing and has no
+# accounts. Stage 3 adds SECRET_KEY -- the verification key only, so it can
+# check a token users/ signed without owning a user table.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: canvas-deployment
+  labels:
+    app: canvas
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: canvas
+  template:
+    metadata:
+      labels:
+        app: canvas
+    spec:
+      initContainers:
+        - name: wait-database
+          image: postgres:12
+          command:
+            [
+              "sh",
+              "-c",
+              "until pg_isready -h ${POSTGRES_HOST};  do echo waiting for database; sleep 2; done;",
+            ]
+          env:
+            - name: POSTGRES_HOST
+              value: "postgres-service"
+        # Schema only. A canvas starts empty, so there is nothing to seed.
+        - name: perform-migrations
+          image: canvas
+          command: ["alembic", "upgrade", "head"]
+          env:
+            - name: POSTGRES_HOST
+              value: "postgres-service"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: password
+          envFrom:
+            - configMapRef:
+                name: postgres-configuration
+            - configMapRef:
+                name: canvas-configuration
+      containers:
+        - name: canvas
+          image: canvas
+          ports:
+            - containerPort: 80
+          livenessProbe:
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            httpGet:
+              path: /api/health/
+              port: 80
+          env:
+            - name: POSTGRES_HOST
+              value: "postgres-service"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: password
+          envFrom:
+            - configMapRef:
+                name: postgres-configuration
+            - configMapRef:
+                name: canvas-configuration

@@ -19,3 +19,16 @@ spec:
                 name: users-service
                 port:
                   number: 80
+    # A second host rather than a second path prefix: both services mount their
+    # whole surface under /api, so they cannot share one hostname without a
+    # rewrite neither app expects.
+    - host: canvas.minikube
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: canvas-service
+                port:
+                  number: 80

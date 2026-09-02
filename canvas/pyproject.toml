@@ -1,0 +1,43 @@
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+[tool.ruff.lint]
+# E/W/F is what flake8 was checking; I replaces isort, and F401 replaces the
+# unused-import half of autoflake.
+select = ["E", "W", "F", "I"]
+ignore = ["E203", "E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+
+[tool.pytest.ini_options]
+# One loop for the whole session: the engine is a module-level global, so its
+# pooled asyncpg connections must not outlive the loop that opened them.
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+
+[tool.mypy]
+# `follow_imports = "skip"` used to live here. It only applies to modules not
+# named on the command line, so it was stubbing every third-party import out to
+# Any -- SQLAlchemy, Pydantic and arq included -- while app/ was checked all
+# along. Nothing ran mypy, so even that found nothing. Dropping it took the
+# count from 4 errors to 22.
+#
+# The flags below are the starter set from mypy's "Using mypy with an existing
+# codebase" guide. They cost nothing here -- still 22 -- so there is no reason
+# not to hold the line at them. `--strict` reports 100, almost all of it missing
+# annotations, and the guide treats that as the destination, not the start.
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+strict_equality = true
+check_untyped_defs = true
+
+[tool.coverage.run]
+# Reference: https://github.com/nedbat/coveragepy/issues/1082
+concurrency = ["greenlet"]
