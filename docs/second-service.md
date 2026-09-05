@@ -87,16 +87,52 @@ once. r/place's entire premise is that a claim made by a stranger appears on
 _your_ screen without you asking. That's a different problem than contention:
 fan-out, not exclusion.
 
-The mechanical answer is a pub/sub channel — Redis Pub/Sub for "best effort,
-lost if no one's listening," Redis Streams for "replay what you missed since
-you reconnected" — with `claim_tile` publishing an event in the same
-transaction it commits, and a WebSocket (or SSE) endpoint replaying it to
-every connected client. The lesson underneath: a broadcast to N open
-connections is not a database write, and a connection that's been open for an
-hour needs its own answer to "is this client's auth still valid," because a
-bearer token checked once at `connect` time doesn't get re-checked on every
-frame the way an HTTP request does. **Not built** — tracked in the gaps table
-below.
+The mechanical answer is a pub/sub channel — `claim_tile` publishing an event
+in the same transaction it commits, and an SSE endpoint replaying it to every
+connected client. The lesson underneath: a broadcast to N open connections is
+not a database write, and a connection that's been open for an hour needs its
+own answer to "is this client's auth still valid," because a bearer token
+checked once at `connect` time doesn't get re-checked on every frame the way
+an HTTP request does. **Not built** — tracked in the gaps table below.
+
+**SSE, not WebSocket — decided.** The write path already answers
+synchronously: `POST /api/v1/claims/` returns `201` or `409` to the claimant
+in the same response. The realtime channel's only remaining job is telling
+everyone *else* a tile changed, which is receive-only by construction — canvas
+has no scenario where a client pushes through the live channel itself. The
+decision rule for SSE vs WebSocket is "does the client need to send anything
+back over this connection"; for canvas the answer is no, so the socket's
+bidirectionality would be unused. SSE also dissolves most of the auth lesson
+above for free — `EventSource` reconnects are plain HTTP requests (with
+`Last-Event-ID` for resume), so every reconnect re-runs the same JWKS
+verification as any other endpoint, where a WebSocket's upgrade handshake is
+a single HTTP request after which the connection has no natural re-auth
+point. If a future feature needs true client→server push over the live
+channel (live cursors, presence), that would be the trigger to revisit — not
+before.
+
+**Pub/Sub, not Streams — decided.** Streams' one advantage over Pub/Sub —
+replay what a reconnecting client missed — is redundant here: `canvas`
+already has a way to get ground truth, `GET /api/v1/claims/`. An SSE
+reconnect refetches full state from that endpoint, then resubscribes to the
+live tail; the client is never stale, without a second recovery mechanism
+duplicating the first one. What choosing Pub/Sub avoids: stream
+retention/trimming and hand-rolled backlog-then-live-tail transition logic on
+the server, for a recovery guarantee already met another way. Streams stay
+the right tool for stage 8 (`notifications`, cross-service fan-out — see the
+gaps table) where no polling endpoint exists to fall back on; this decision
+is local to §3, not a blanket one.
+
+**A swappable publisher, not a bare Redis client — decided.** This is
+`canvas`'s first outbound call to anything besides its own Postgres, so
+`claim_tile` calls a small publisher seam — one function or `Protocol`,
+`publish_claim_event(event) -> None` — rather than importing `redis.asyncio`
+at the call site. Two things that buys, both concrete: tests substitute an
+in-memory fake instead of standing up real Redis, and if stage 8 moves
+cross-service fan-out onto Streams or NATS, only the adapter behind the seam
+changes — `claim_tile` and its transaction boundary don't. Kept to exactly
+one method on one interface; nothing configurable beyond the one thing
+actually swapped between prod and tests.
 
 ### 4. One claim per cooldown
 
@@ -212,7 +248,7 @@ and large enough to teach something.
 | Stage | Build                                                                             | Done when                                                                                                                  |
 | ----- | --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | 1     | `canvas` with the `claim` table, `POST /api/v1/claims/`, the partial unique index | **✅ Done.** Two concurrent claims for one tile return one `201` and one `409` — `canvas/tests/test_claims.py`             |
-| 2     | Realtime fan-out: publish on claim, a WebSocket/SSE endpoint replays it           | Two browser tabs on the canvas; a claim made in one appears in the other with no refresh                                   |
+| 2     | Realtime fan-out: publish on claim, an SSE endpoint replays it                    | Two browser tabs on the canvas; a claim made in one appears in the other with no refresh                                   |
 | 3     | The arq expiry job                                                                | An unconfirmed hold is `released` after `HOLD_MINUTES`, and a test proves the confirm-vs-expire race resolves one way only |
 | 4     | Identity: `users` signs RS256, `canvas` verifies via JWKS — no user table (§5 decided) | `canvas` accepts a token `users` signed and rejects one signed with a different key; `canvas` imports nothing from `users` |
 | 5     | Per-user cooldown on claims, backed by Redis                                      | Two claims from the same user inside the cooldown window: the second is `429`, not `201`                                   |
@@ -263,7 +299,7 @@ pain is the teaching, and stage 4 is what supplied it for the last row.
 
 | Gap                                    | When it starts hurting                                                                   | What you'd add                                                                            |
 | -------------------------------------- | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| No realtime channel                    | The moment two people look at the canvas at once — this is the whole point of the domain | Redis Pub/Sub or Streams, published from `claim_tile`, replayed over WebSocket/SSE        |
+| No realtime channel                    | The moment two people look at the canvas at once — this is the whole point of the domain | Redis Pub/Sub, published from `claim_tile` behind a swappable publisher interface, replayed over SSE |
 | No rate limiting                       | The moment one user scripts a claim loop                                                 | A Redis counter or token bucket, keyed by the identity §5 introduces                      |
 | No event bus for cross-service fan-out | Service 4 (`notifications`). `arq` is a job queue — one consumer per job, no fan-out     | Redis Streams (already have Redis) or NATS                                                |
 | No outbox                              | The first time a claim confirms and no email goes out                                    | An `outbox` table written in the same transaction, drained by a worker                    |
