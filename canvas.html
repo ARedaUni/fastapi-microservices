@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canvas</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            background: white;
+            padding: 20px 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            font-size: 32px;
+            font-weight: 600;
+            color: #333;
+            letter-spacing: -0.5px;
+        }
+
+        .auth-section {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .user-info {
+            font-size: 15px;
+            color: #666;
+            font-weight: 500;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.6);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            box-shadow: none;
+            transform: none;
+        }
+
+        .status {
+            padding: 14px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+            font-size: 14px;
+            font-weight: 500;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .status.show {
+            display: block;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .main-content {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .grid-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .grid-info {
+            font-size: 14px;
+            color: #666;
+            text-align: center;
+        }
+
+        .grid-container {
+            border: 3px solid #e0e0e0;
+            background: #fafafa;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(100, 1fr);
+            gap: 0;
+            width: 800px;
+            height: 800px;
+        }
+
+        .tile {
+            aspect-ratio: 1;
+            border: 0.5px solid #e8e8e8;
+            background: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 9px;
+            font-weight: 700;
+            color: #333;
+            transition: all 0.2s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .tile:hover {
+            filter: brightness(1.05);
+            z-index: 10;
+            box-shadow: inset 0 0 0 2px rgba(0,0,0,0.1);
+        }
+
+        .tile.owned {
+            cursor: default;
+        }
+
+        .tile.owned:hover {
+            filter: brightness(0.98);
+        }
+
+        .tile.claiming {
+            animation: pulse 0.6s ease;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        .tile-owner {
+            font-size: 8px;
+            white-space: nowrap;
+            text-shadow: 0 1px 2px rgba(255,255,255,0.8);
+            pointer-events: none;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .login-prompt {
+            text-align: center;
+            padding: 60px 40px;
+        }
+
+        .login-prompt h2 {
+            margin-bottom: 15px;
+            color: #333;
+            font-size: 28px;
+        }
+
+        .login-prompt p {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+
+        .login-prompt code {
+            background: #f5f5f5;
+            padding: 12px 16px;
+            border-radius: 6px;
+            display: inline-block;
+            margin-top: 15px;
+            font-size: 12px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            color: #333;
+            border: 1px solid #e0e0e0;
+            overflow-x: auto;
+            max-width: 500px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 60px 40px;
+            color: #666;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 24px;
+            height: 24px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .stats {
+            display: flex;
+            gap: 30px;
+            justify-content: center;
+            margin-top: 20px;
+            padding: 20px 0;
+            border-top: 1px solid #e0e0e0;
+            font-size: 13px;
+            color: #666;
+        }
+
+        .stat {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .stat-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .stat-dot.claimed {
+            background: #667eea;
+        }
+
+        .stat-dot.empty {
+            background: #e0e0e0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎨 Canvas</h1>
+            <div class="auth-section">
+                <span class="user-info" id="userInfo"></span>
+                <button id="authButton">Login</button>
+            </div>
+        </div>
+
+        <div id="status" class="status"></div>
+
+        <div class="main-content">
+            <div id="content"></div>
+        </div>
+    </div>
+
+    <script>
+        const USERS_API = "http://localhost:8000";
+        const CANVAS_API = "http://localhost:8001";
+
+        let token = null;
+        let owner = null;
+        let claims = {};
+        let isLoading = false;
+
+        async function init() {
+            token = localStorage.getItem("jwt_token");
+            owner = localStorage.getItem("jwt_owner");
+
+            const authButton = document.getElementById("authButton");
+            const userInfo = document.getElementById("userInfo");
+
+            if (token && owner) {
+                userInfo.textContent = `👤 ${owner}`;
+                authButton.textContent = "Logout";
+                authButton.onclick = logout;
+                await loadCanvas();
+                setInterval(refreshCanvas, 2000);
+            } else {
+                userInfo.textContent = "";
+                authButton.textContent = "Login";
+                authButton.onclick = login;
+                showLoginPrompt();
+            }
+        }
+
+        function login() {
+            showStatus("Run the setup script: ./setup-canvas-token.sh", "info");
+        }
+
+        function logout() {
+            localStorage.removeItem("jwt_token");
+            localStorage.removeItem("jwt_owner");
+            token = null;
+            owner = null;
+            init();
+        }
+
+        function showLoginPrompt() {
+            const content = document.getElementById("content");
+            content.innerHTML = `
+                <div class="login-prompt">
+                    <h2>Welcome to Canvas</h2>
+                    <p>A collaborative pixel grid where every tile has one owner.</p>
+                    <p style="font-size: 13px; margin-top: 30px;">Run this in your terminal to get started:</p>
+                    <code>./setup-canvas-token.sh</code>
+                    <p style="margin-top: 20px; font-size: 12px; color: #999;">Then follow the instructions to set your token.</p>
+                </div>
+            `;
+        }
+
+        async function loadCanvas() {
+            const content = document.getElementById("content");
+            content.innerHTML = `
+                <div class="loading">
+                    <span class="spinner"></span>Loading canvas...
+                </div>
+            `;
+            isLoading = true;
+
+            try {
+                const resp = await fetch(`${CANVAS_API}/api/v1/claims/`, {
+                    method: "GET",
+                    headers: { "Accept": "application/json" }
+                });
+
+                if (!resp.ok) throw new Error(`Failed to load claims: ${resp.status}`);
+
+                const data = await resp.json();
+                claims = {};
+
+                if (data.claims) {
+                    data.claims.forEach(claim => {
+                        claims[`${claim.x},${claim.y}`] = claim;
+                    });
+                }
+
+                renderGrid();
+            } catch (e) {
+                showStatus(`Error loading canvas: ${e.message}`, "error");
+                content.innerHTML = `<div class="login-prompt"><h2>Error</h2><p>${e.message}</p></div>`;
+            } finally {
+                isLoading = false;
+            }
+        }
+
+        async function refreshCanvas() {
+            if (isLoading) return;
+            try {
+                const resp = await fetch(`${CANVAS_API}/api/v1/claims/`, {
+                    method: "GET",
+                    headers: { "Accept": "application/json" }
+                });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    if (data.claims) {
+                        data.claims.forEach(claim => {
+                            const key = `${claim.x},${claim.y}`;
+                            if (!claims[key] || claims[key].colour !== claim.colour) {
+                                claims[key] = claim;
+                                updateTile(claim.x, claim.y);
+                            }
+                        });
+                    }
+                }
+            } catch (e) {
+                console.error("Refresh error:", e);
+            }
+        }
+
+        function renderGrid() {
+            const content = document.getElementById("content");
+            const wrapper = document.createElement("div");
+            wrapper.className = "grid-wrapper";
+
+            const gridContainer = document.createElement("div");
+            gridContainer.className = "grid-container";
+
+            const gridInner = document.createElement("div");
+            gridInner.className = "grid";
+
+            for (let y = 0; y < 100; y++) {
+                for (let x = 0; x < 100; x++) {
+                    const tile = createTile(x, y);
+                    gridInner.appendChild(tile);
+                }
+            }
+
+            gridContainer.appendChild(gridInner);
+
+            const claimedCount = Object.values(claims).filter(c => c.status !== "released").length;
+            const stats = document.createElement("div");
+            stats.className = "stats";
+            stats.innerHTML = `
+                <div class="stat">
+                    <span class="stat-dot claimed"></span>
+                    <span>${claimedCount} tiles claimed</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-dot empty"></span>
+                    <span>${10000 - claimedCount} tiles free</span>
+                </div>
+            `;
+
+            wrapper.appendChild(gridContainer);
+            wrapper.appendChild(stats);
+
+            content.innerHTML = "";
+            content.appendChild(wrapper);
+        }
+
+        function createTile(x, y) {
+            const tile = document.createElement("div");
+            tile.className = "tile";
+            tile.dataset.x = x;
+            tile.dataset.y = y;
+            tile.id = `tile-${x}-${y}`;
+
+            const claim = claims[`${x},${y}`];
+            if (claim && claim.status !== "released") {
+                tile.classList.add("owned");
+                tile.style.background = claim.colour;
+                tile.style.color = getTextColor(claim.colour);
+                tile.innerHTML = `<span class="tile-owner">${claim.owner.substring(0, 2)}</span>`;
+            }
+
+            tile.onclick = () => claimTile(x, y);
+            return tile;
+        }
+
+        function updateTile(x, y) {
+            const tile = document.getElementById(`tile-${x}-${y}`);
+            if (!tile) return;
+
+            const claim = claims[`${x},${y}`];
+            if (claim && claim.status !== "released") {
+                tile.classList.add("owned");
+                tile.style.background = claim.colour;
+                tile.style.color = getTextColor(claim.colour);
+                tile.innerHTML = `<span class="tile-owner">${claim.owner.substring(0, 2)}</span>`;
+            } else {
+                tile.classList.remove("owned");
+                tile.style.background = "white";
+                tile.style.color = "#333";
+                tile.innerHTML = "";
+            }
+        }
+
+        function getTextColor(hexColor) {
+            const r = parseInt(hexColor.slice(1, 3), 16);
+            const g = parseInt(hexColor.slice(3, 5), 16);
+            const b = parseInt(hexColor.slice(5, 7), 16);
+            const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+            return brightness > 128 ? "#000" : "#fff";
+        }
+
+        async function claimTile(x, y) {
+            if (!token) {
+                showStatus("Not logged in", "error");
+                return;
+            }
+
+            const claim = claims[`${x},${y}`];
+            if (claim && claim.status !== "released") {
+                showStatus(`Claimed by ${claim.owner}`, "error");
+                return;
+            }
+
+            const color = "#" + Math.floor(Math.random() * 16777215).toString(16).padStart(6, "0");
+            const tile = document.getElementById(`tile-${x}-${y}`);
+            tile?.classList.add("claiming");
+
+            try {
+                const resp = await fetch(`${CANVAS_API}/api/v1/claims/`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ x, y, colour: color })
+                });
+
+                if (resp.status === 201) {
+                    const data = await resp.json();
+                    claims[`${x},${y}`] = data;
+                    updateTile(x, y);
+                    showStatus(`✅ Claimed (${x}, ${y})`, "success");
+                } else if (resp.status === 409) {
+                    showStatus("⚡ Someone claimed it first!", "error");
+                    await loadCanvas();
+                } else if (resp.status === 401) {
+                    showStatus("Token expired", "error");
+                    logout();
+                } else {
+                    const errData = await resp.json();
+                    showStatus(`Error: ${errData.detail || resp.statusText}`, "error");
+                }
+            } catch (e) {
+                showStatus(`Error: ${e.message}`, "error");
+            } finally {
+                tile?.classList.remove("claiming");
+            }
+        }
+
+        function showStatus(msg, type = "info") {
+            const statusEl = document.getElementById("status");
+            statusEl.textContent = msg;
+            statusEl.className = `status show ${type}`;
+            setTimeout(() => statusEl.classList.remove("show"), 4000);
+        }
+
+        init();
+    </script>
+</body>
+</html>
