@@ -40,4 +40,7 @@ check_untyped_defs = true
 
 [tool.coverage.run]
 # Reference: https://github.com/nedbat/coveragepy/issues/1082
-concurrency = ["greenlet"]
+# "thread" is here because naming any concurrency replaces coverage's default of
+# ["thread"] -- without it, everything reached through asyncio.to_thread reads as
+# uncovered even when a test drives it.
+concurrency = ["greenlet", "thread"]

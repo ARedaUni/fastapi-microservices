@@ -27,6 +27,12 @@ jobs:
       - name: Test
         run: make tests
 
+      # After `make tests`, because this one needs both services actually
+      # answering on the network -- it asserts they agree about what a token is,
+      # which neither service's own suite can see.
+      - name: Contract
+        run: make contract
+
       - name: Dump logs on failure
         if: failure()
         run: docker compose logs

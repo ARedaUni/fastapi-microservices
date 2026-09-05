@@ -1,4 +1,4 @@
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -9,4 +9,7 @@ class Token(BaseModel):
 
 
 class TokenPayload(BaseModel):
-    user_id: Optional[int] = None
+    # `sub` is a string on the wire (RFC 7519 4.1.2); this issuer puts a user
+    # id in it. Declared int so a non-numeric subject fails validation -> 403,
+    # rather than reaching a query that expects an integer -> 500.
+    sub: int

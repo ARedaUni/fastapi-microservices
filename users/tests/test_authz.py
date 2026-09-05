@@ -12,12 +12,15 @@ import pytest
 from httpx import AsyncClient
 
 from app.core.config import settings
-from app.core.security import ALGORITHM
+from app.core.security import ALGORITHM, AUDIENCES, PRIVATE_KEY, PUBLIC_JWK
 
 
 def _encode(payload: Dict) -> str:
     return jwt.encode(
-        payload, key=settings.SECRET_KEY.get_secret_value(), algorithm=ALGORITHM
+        {"iss": settings.JWT_ISSUER, "aud": AUDIENCES, **payload},
+        key=PRIVATE_KEY,
+        algorithm=ALGORITHM,
+        headers={"kid": PUBLIC_JWK["kid"]},
     )
 
 
@@ -56,9 +59,7 @@ async def test_protected_route_with_a_malformed_token_is_forbidden(client: Async
 
 @pytest.mark.asyncio
 async def test_protected_route_with_an_expired_token_is_forbidden(client: AsyncClient):
-    expired = _encode(
-        {"exp": datetime(2020, 1, 1, tzinfo=timezone.utc), "user_id": "1"}
-    )
+    expired = _encode({"exp": datetime(2020, 1, 1, tzinfo=timezone.utc), "sub": "1"})
     res = await client.get(
         "/api/v1/home/", headers={"Authorization": f"Bearer {expired}"}
     )
@@ -68,7 +69,7 @@ async def test_protected_route_with_an_expired_token_is_forbidden(client: AsyncC
 @pytest.mark.asyncio
 async def test_token_for_a_deleted_user_is_not_found(client: AsyncClient):
     orphan = _encode(
-        {"exp": datetime.now(timezone.utc) + timedelta(minutes=5), "user_id": "999999"}
+        {"exp": datetime.now(timezone.utc) + timedelta(minutes=5), "sub": "999999"}
     )
     res = await client.get(
         "/api/v1/users/999999/", headers={"Authorization": f"Bearer {orphan}"}

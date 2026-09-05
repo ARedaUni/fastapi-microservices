@@ -27,8 +27,8 @@ class Claim(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     x: Mapped[int]
     y: Mapped[int]
-    # A nickname, until stage 3. Then the token `users` signed carries a
-    # user_id and this becomes that, with no user table on this side.
+    # The `sub` of a token users signed. A string, and stays one: this service
+    # has no user table to make it a foreign key into, and never will.
     owner: Mapped[str]
     colour: Mapped[str]
     status: Mapped[str] = mapped_column(default=HELD)

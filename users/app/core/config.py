@@ -1,12 +1,9 @@
-from typing import Annotated, Any, Dict, Optional
+from typing import Any, Dict, Optional
 
-from pydantic import EmailStr, Field, SecretStr, ValidationInfo, field_validator
+from pydantic import EmailStr, SecretStr, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings
 
-# RFC 7518 section 3.2: an HS256 key must be at least as long as the hash it
-# feeds, 32 bytes. PyJWT warns below that, once per token signed -- somewhere
-# nobody deploying is reading. This refuses to start instead.
-HMAC_SHA256_MIN_KEY_BYTES = 32
+from app.core.keys import load_private_key
 
 
 class Settings(BaseSettings):
@@ -45,8 +42,22 @@ class Settings(BaseSettings):
     FIRST_USER_EMAIL: EmailStr
     FIRST_USER_PASSWORD: SecretStr
 
-    SECRET_KEY: Annotated[SecretStr, Field(min_length=HMAC_SHA256_MIN_KEY_BYTES)]
+    # Base64 of a PEM. Nothing else holds this; verifiers get the public half
+    # from /.well-known/jwks.json.
+    #   openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \
+    #     | base64 | tr -d '\n'
+    # The `tr` is load-bearing: GNU base64 wraps at 76 columns and
+    # load_private_key decodes with validate=True, which rejects newlines.
+    JWT_PRIVATE_KEY: SecretStr
+    JWT_ISSUER: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int
+
+    @field_validator("JWT_PRIVATE_KEY")
+    @classmethod
+    def validate_signing_key(cls, v: SecretStr) -> SecretStr:
+        # Refuse to start, rather than 500 on whoever logs in first.
+        load_private_key(v.get_secret_value())
+        return v
 
     # REDIS_HOST and REDIS_PORT live in app.core.redis.RedisConfig, which the
     # worker imports without this class and everything it requires.

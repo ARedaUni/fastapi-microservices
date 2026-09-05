@@ -52,6 +52,11 @@ services:
       # Not the api's code -- mounted so `make lint` reaches the locustfile.
       # ruff covers it; mypy doesn't, since locust isn't installed here.
       - ./load:/app/load
+      # Also not the api's code. The contract suite runs from here because this
+      # container already has pytest, httpx and pyjwt, and can reach both
+      # services by name -- but it imports nothing from `app`, which is the
+      # whole point of it. `make contract`.
+      - ./contract:/app/contract
       - ./users/migrations:/app/migrations
       - ./users/pyproject.toml:/app/pyproject.toml
     healthcheck:

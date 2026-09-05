@@ -10,9 +10,10 @@ HEX_COLOUR = r"^#[0-9a-fA-F]{6}$"
 
 
 class ClaimCreate(BaseModel):
+    # No `owner`. It comes off the verified token, so the caller cannot state
+    # it -- which is the difference between an identity and a nickname.
     x: int = Field(ge=0, lt=GRID_SIZE)
     y: int = Field(ge=0, lt=GRID_SIZE)
-    owner: str = Field(min_length=1, max_length=40)
     colour: str = Field(pattern=HEX_COLOUR)
 
 

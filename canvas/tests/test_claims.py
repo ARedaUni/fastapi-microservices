@@ -7,12 +7,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.claims import HELD, Claim
+from tests.conftest import auth
 
 CLAIMS = "/api/v1/claims/"
 
 
 def a_claim(**overrides: Any) -> Dict[str, Any]:
-    return {"x": 4, "y": 7, "owner": "ada", "colour": "#ff0055", **overrides}
+    return {"x": 4, "y": 7, "colour": "#ff0055", **overrides}
 
 
 async def test_claiming_a_free_tile_holds_it(client: AsyncClient):
@@ -28,7 +29,7 @@ async def test_claiming_a_free_tile_holds_it(client: AsyncClient):
 async def test_claiming_a_taken_tile_is_rejected(client: AsyncClient):
     assert (await client.post(CLAIMS, json=a_claim())).status_code == 201
 
-    res = await client.post(CLAIMS, json=a_claim(owner="grace", colour="#00ff00"))
+    res = await client.post(CLAIMS, json=a_claim(colour="#00ff00"))
 
     assert res.status_code == 409
     assert "(4, 7)" in res.json()["detail"]
@@ -56,7 +57,7 @@ async def test_a_released_claim_frees_its_tile(
     claim.status = "released"
     await session.commit()
 
-    res = await client.post(CLAIMS, json=a_claim(owner="grace"))
+    res = await client.post(CLAIMS, json=a_claim())
 
     assert res.status_code == 201
 
@@ -71,8 +72,8 @@ async def test_two_concurrent_claims_for_one_tile_leave_one_winner(
     row survives, not two.
     """
     first, second = await asyncio.gather(
-        client.post(CLAIMS, json=a_claim(owner="ada", colour="#ff0055")),
-        client.post(CLAIMS, json=a_claim(owner="grace", colour="#00ff00")),
+        client.post(CLAIMS, json=a_claim(), headers=auth(sub="ada")),
+        client.post(CLAIMS, json=a_claim(colour="#00ff00"), headers=auth(sub="grace")),
     )
 
     assert sorted([first.status_code, second.status_code]) == [201, 409]
@@ -85,7 +86,7 @@ async def test_the_canvas_lists_live_claims_only(
     client: AsyncClient, session: AsyncSession
 ):
     held = await client.post(CLAIMS, json=a_claim())
-    await client.post(CLAIMS, json=a_claim(x=9, y=9, owner="grace"))
+    await client.post(CLAIMS, json=a_claim(x=9, y=9))
     lapsed = await session.get(Claim, held.json()["id"])
     assert lapsed is not None
     lapsed.status = "released"

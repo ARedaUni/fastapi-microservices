@@ -4,6 +4,7 @@ from arq import create_pool
 from fastapi import FastAPI
 
 from app.api import router
+from app.api.jwks import router as jwks_router
 from app.core import redis
 from app.core.config import settings
 
@@ -28,6 +29,9 @@ def create_application() -> FastAPI:
         openapi_url="/api/openapi.json",
     )
     application.include_router(router)
+    # The one exception to the /api rule above: verifiers look for keys at
+    # /.well-known/, so the ingress forwards that prefix too.
+    application.include_router(jwks_router)
     return application
 
 

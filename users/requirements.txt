@@ -5,7 +5,9 @@ alembic==1.19.1
 pydantic[email]==2.13.5
 pydantic-settings==2.15.0
 bcrypt==5.0.0
-pyjwt==2.13.0
+# [crypto] pulls `cryptography`, which PyJWT needs for RS256. Without the extra
+# it can only do HMAC, and jwt.encode raises on an RSA key rather than warning.
+pyjwt[crypto]==2.13.0
 python-multipart==0.0.32
 fastapi==0.141.1
 uvicorn[standard]==0.52.4
