@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import jwt
 import pytest
@@ -61,14 +61,32 @@ def auth(**kwargs: Any) -> Dict[str, str]:
     return {"Authorization": f"Bearer {mint(**kwargs)}"}
 
 
+@pytest.fixture()
+def jwks_fetches() -> List[int]:
+    """One entry per trip to the issuer's key set.
+
+    Exists so a test can assert a fetch that must *not* happen: "did not go out"
+    is only observable by owning the thing that would have gone.
+    """
+    return []
+
+
 @pytest.fixture(autouse=True)
-def published_keys(monkeypatch: pytest.MonkeyPatch):
+def published_keys(monkeypatch: pytest.MonkeyPatch, jwks_fetches: List[int]) -> None:
     """Stand in for users' JWKS endpoint.
 
     The seam is the network fetch and nothing else, so kid lookup, signature,
     iss, aud and exp all still run for real.
     """
-    monkeypatch.setattr(security.jwks_client, "fetch_data", lambda: JWKS)
+
+    def fetch_data() -> Dict[str, Any]:
+        jwks_fetches.append(1)
+        return JWKS
+
+    monkeypatch.setattr(security.jwks_client, "fetch_data", fetch_data)
+    # Absent-kid memory is process-global, so one test's forgery would otherwise
+    # decide the next test's answer.
+    security._unknown_kids.clear()
 
 
 @pytest.fixture()

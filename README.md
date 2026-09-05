@@ -88,10 +88,16 @@ load/                   locust scenarios; `make load`, never started by `make up
 1. **Rename the service.** `users/` is a directory name, and it appears in
    `docker-compose.yml`, the `Tiltfile` and `k8s/*.yaml`. Nothing imports it —
    the Python package is `app`, which stays.
-2. **Generate a real signing key.** `openssl genpkey -algorithm RSA -pkeyopt
-   rsa_keygen_bits:2048 | base64 | tr -d '\\n'` into `JWT_PRIVATE_KEY`. The app
-   refuses to start on anything that is not a loadable RSA key, so a
-   placeholder fails at boot rather than at the first login.
+2. **Generate a real signing key.** The value is base64 of a PEM, on one line:
+
+   ```sh
+   openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 | base64 | tr -d '\n'
+   ```
+
+   into `JWT_PRIVATE_KEY`. The `tr` is not optional: GNU `base64` wraps at 76
+   columns, and the key is decoded with `validate=True`, which rejects the
+   newlines. The app refuses to start on anything that is not a loadable RSA
+   key, so a placeholder fails at boot rather than at the first login.
 3. **Model your own tables.** Add them under `users/app/models/`, import them in
    `users/app/models/__init__.py` so Alembic sees them, then:
 
@@ -130,7 +136,9 @@ load/                   locust scenarios; `make load`, never started by `make up
 5. **Add it to the token's audience.** `AUDIENCES` in
    `users/app/core/security.py`, and the new service pins its own name. A
    constant rather than config, because widening who may accept a token is a
-   trust decision.
+   trust decision — and note that every name on that list goes into every
+   token, so adding one widens what a stolen token reaches. See
+   [Before you deploy](#before-you-deploy).
 
 The two share a Postgres *server* and Redis, and no data. Crossing a process
 boundary should stay a deliberate act.
@@ -147,6 +155,13 @@ Honest limits. Each one is a decision the template defers to you, not a bug:
   one is accepted. Add a `Field(min_length=...)` that matches your rules.
 - **The checked-in secrets are examples.** `.env.example` and the `Secret` in
   `k8s/users.yaml` carry public values. Both say so; replace all of them.
+- **A token is accepted by every service, not just the one you handed it to.**
+  `AUDIENCES` puts every service name in every token's `aud`, so the credential
+  `canvas` receives also works against `users`, including its superuser routes.
+  Each service does pin its own name — the mechanism is there and tested — but
+  nothing issues a narrowed token, so there is no way to hand `canvas` a token
+  that is useless anywhere else. Give login a `resource` parameter (RFC 8707)
+  and mint `aud` from it before a second service handles anything sensitive.
 - **No refresh tokens, no revocation, no sessions.** A token is live until
   `exp`; shortening `ACCESS_TOKEN_EXPIRE_MINUTES` is the only lever. Rotating
   the signing key invalidates every outstanding token at once, which is a
@@ -185,17 +200,19 @@ app against the wrong schema.
 | `make up` | Build and start the stack, waiting for health |
 | `make down` | Stop it |
 | `make tests` | pytest inside the api container, with the coverage gate |
+| `make contract` | Cross-service tests: the two services still agree about a token |
 | `make lint` | `ruff check`, `ruff format --check`, `mypy` |
 | `make format` | Fix what `ruff` can fix |
-| `make migrations msg="..."` | Autogenerate a migration |
+| `make migrations msg="..."` | Autogenerate a migration; `svc=canvas` for the other service |
 | `make logs` | Tail the api |
 | `make shell` | Bash inside the api container |
 | `make load` | Load-test the api; web UI on <http://localhost:8089> |
 | `make load-headless` | Load-test and print percentiles, then exit |
 | `make help` | This table, from the Makefile itself |
 
-CI runs `make up`, `make lint` and `make tests` — the same three commands, on
-the same stack. A green pipeline and a working laptop mean the same thing.
+CI runs `make up`, `make lint`, `make tests` and `make contract` — the same four
+commands, on the same stack. A green pipeline and a working laptop mean the same
+thing.
 
 ### Load testing
 

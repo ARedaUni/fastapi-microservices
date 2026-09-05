@@ -1,9 +1,14 @@
+import time
 from datetime import timedelta
+from typing import List
 
+import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from httpx import AsyncClient
+from jwt.exceptions import PyJWKClientConnectionError
 
-from tests.conftest import auth
+from app.core import security
+from tests.conftest import JWKS, auth
 
 CLAIMS = "/api/v1/claims/"
 TILE = {"x": 4, "y": 7, "colour": "#ff0055"}
@@ -38,6 +43,26 @@ async def test_a_token_with_an_unknown_key_id_is_unauthorized(client: AsyncClien
     res = await client.post(CLAIMS, json=TILE, headers=auth(kid="never-published"))
 
     assert res.status_code == 401
+
+
+async def test_a_repeated_unknown_key_id_costs_one_fetch(
+    client: AsyncClient, jwks_fetches: List[int]
+):
+    """An unknown `kid` forces PyJWKClient to refetch the whole key set, and the
+    `kid` is read from the unverified header -- so without a negative cache any
+    anonymous caller turns one request here into one request to the issuer.
+    """
+    assert (
+        await client.post(CLAIMS, json=TILE, headers=auth(kid="unheard-of"))
+    ).status_code == 401
+    after_first = len(jwks_fetches)
+
+    for _ in range(3):
+        assert (
+            await client.post(CLAIMS, json=TILE, headers=auth(kid="unheard-of"))
+        ).status_code == 401
+
+    assert len(jwks_fetches) == after_first, "a kid already proven absent was refetched"
 
 
 async def test_a_token_minted_only_for_users_is_unauthorized(client: AsyncClient):
@@ -85,3 +110,42 @@ async def test_listing_the_canvas_needs_no_token(anonymous: AsyncClient):
     looking does not.
     """
     assert (await anonymous.get(CLAIMS)).status_code == 200
+
+
+async def test_an_unreachable_issuer_is_503_and_is_not_remembered(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+):
+    """503, not 401: we cannot say whether the token is good, and 401 would send
+    the caller to log in again -- which also fails.
+
+    The second half is the sharper one. An outage must not be recorded as "this
+    kid does not exist", or a blip becomes a minute of confident 401s for keys
+    that were fine all along. monkeypatch here, unlike the counting seam in
+    conftest, because this test needs the fetch to *fail*.
+    """
+
+    def unreachable() -> None:
+        raise PyJWKClientConnectionError("users is down")
+
+    monkeypatch.setattr(security.jwks_client, "fetch_data", unreachable)
+
+    assert (await client.post(CLAIMS, json=TILE)).status_code == 503
+    assert security._unknown_kids == {}, "an outage was remembered as a bad kid"
+
+    monkeypatch.setattr(security.jwks_client, "fetch_data", lambda: JWKS)
+
+    assert (await client.post(CLAIMS, json=TILE)).status_code == 201
+
+
+async def test_absent_kid_memory_is_bounded(client: AsyncClient):
+    """The negative cache is keyed by attacker-supplied `kid`, so it needs a
+    ceiling or forged tokens grow it without limit.
+    """
+    security._unknown_kids.update(
+        {f"kid-{i}": time.monotonic() for i in range(security.MAX_UNKNOWN_KIDS)}
+    )
+
+    res = await client.post(CLAIMS, json=TILE, headers=auth(kid="one-too-many"))
+
+    assert res.status_code == 401
+    assert len(security._unknown_kids) <= security.MAX_UNKNOWN_KIDS

@@ -44,7 +44,10 @@ class Settings(BaseSettings):
 
     # Base64 of a PEM. Nothing else holds this; verifiers get the public half
     # from /.well-known/jwks.json.
-    #   openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 | base64
+    #   openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \
+    #     | base64 | tr -d '\n'
+    # The `tr` is load-bearing: GNU base64 wraps at 76 columns and
+    # load_private_key decodes with validate=True, which rejects newlines.
     JWT_PRIVATE_KEY: SecretStr
     JWT_ISSUER: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int

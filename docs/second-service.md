@@ -134,9 +134,9 @@ is thirty lines of `PyJWKClient` behind `asyncio.to_thread`, and knows only
 Row 3 was the stated plan for a while and is what a
 workplace would pick. It was dropped for a specific reason: everything this
 repo is here to teach lives on the *verifying* side of the boundary — a public
-key instead of a shared secret, `iss` and `aud` so a token for one service is
-not valid at another, a JWKS so keys can rotate without redeploying every
-service, and `canvas` importing nothing from `users`. That side is identical
+key instead of a shared secret, `iss` and `aud` so each service pins who signed
+a token and checks its own name before accepting it, a JWKS so keys can rotate
+without redeploying every service, and `canvas` importing nothing from `users`. That side is identical
 whether Keycloak signs the token or forty lines of PyJWT do. Buying an IdP buys
 none of it, and costs a black box in the middle of the one thing being studied.
 
@@ -144,8 +144,15 @@ Row 1 is what the repo does today. Row 2 is about forty lines in `users/` and
 thirty in `canvas`.
 
 What row 2 does **not** buy, stated plainly: no refresh tokens, no revocation,
-no MFA, and a login ceremony that is still a password. Acceptable here,
-unacceptable in production — see
+no MFA, and a login ceremony that is still a password.
+
+Nor, yet, a *narrow* `aud`. `AUDIENCES` puts every service name in every token,
+so the token `canvas` receives is also accepted by `users`. The check is real —
+each service pins its own name, and `canvas/tests/test_auth.py` proves a token
+minted only for `users` is refused — but nothing mints one. What is missing is
+a way for a client to ask for a token good at one service only; until then,
+handing your token to `canvas` hands it your `users` access too. Acceptable
+here, unacceptable in production — see
 [Before you deploy](../README.md#before-you-deploy).
 
 The escape hatch is the point, not a consolation. `canvas` only ever learns an
