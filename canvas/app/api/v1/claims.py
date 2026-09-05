@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_session
+from app.api.deps import current_subject, get_session
 from app.models.claims import HELD, HOLD_MINUTES, LIVE_STATUSES, Claim
 from app.schemas.claim import ClaimCreate, ClaimRead
 
@@ -17,7 +17,9 @@ ONE_LIVE_CLAIM_PER_TILE = "one_live_claim_per_tile"
 
 @router.post("/", response_model=ClaimRead, status_code=201)
 async def claim_tile(
-    payload: ClaimCreate, session: AsyncSession = Depends(get_session)
+    payload: ClaimCreate,
+    owner: str = Depends(current_subject),
+    session: AsyncSession = Depends(get_session),
 ) -> Claim:
     """Take a tile, or lose the race for it.
 
@@ -28,6 +30,7 @@ async def claim_tile(
     """
     claim = Claim(
         **payload.model_dump(),
+        owner=owner,
         status=HELD,
         expires_at=datetime.now(timezone.utc) + timedelta(minutes=HOLD_MINUTES),
     )

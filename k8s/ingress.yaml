@@ -19,6 +19,16 @@ spec:
                 name: users-service
                 port:
                   number: 80
+          # The one thing users mounts outside /api. In-cluster verifiers reach
+          # it via the Service directly; this is so it can be curled from
+          # outside, which is most of how a key problem gets diagnosed.
+          - path: /.well-known
+            pathType: Prefix
+            backend:
+              service:
+                name: users-service
+                port:
+                  number: 80
     # A second host rather than a second path prefix: both services mount their
     # whole surface under /api, so they cannot share one hostname without a
     # rewrite neither app expects.

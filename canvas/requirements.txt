@@ -9,3 +9,6 @@ pydantic==2.13.5
 pydantic-settings==2.15.0
 fastapi==0.141.1
 uvicorn[standard]==0.52.4
+# Back for stage 4: canvas verifies tokens users signed. [crypto] is what makes
+# RS256 available; the private half never comes near this service.
+pyjwt[crypto]==2.13.0

@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.core.security import ALGORITHM
+from app.core.security import ALGORITHM, AUDIENCE, PUBLIC_KEY
 from app.crud.users import crud_user
 from app.models.users import User
 from app.schemas.token import TokenPayload
@@ -21,8 +21,16 @@ async def get_session():
 
 def get_token_data(token: str = Depends(oauth2)) -> TokenPayload:
     try:
-        secret_key = settings.SECRET_KEY.get_secret_value()
-        payload = jwt.decode(token, secret_key, algorithms=[ALGORITHM])
+        # algorithms is pinned, never read from the header: the public key is
+        # published, so a verifier that trusted `alg` would accept an HS256
+        # token signed with that key as the HMAC secret.
+        payload = jwt.decode(
+            token,
+            key=PUBLIC_KEY,
+            algorithms=[ALGORITHM],
+            issuer=settings.JWT_ISSUER,
+            audience=AUDIENCE,
+        )
         token_data = TokenPayload(**payload)
     except (jwt.PyJWTError, ValidationError):
         raise HTTPException(status_code=403, detail="Could not validate credentials")
@@ -33,7 +41,7 @@ async def get_current_user(
     token: TokenPayload = Depends(get_token_data),
     session: AsyncSession = Depends(get_session),
 ) -> User:
-    user = await crud_user.get(session, id=token.user_id)
+    user = await crud_user.get(session, id=token.sub)
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
     if not user.is_active:

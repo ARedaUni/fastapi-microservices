@@ -23,11 +23,14 @@ data:
   # This service's own database. One per service, never shared -- two Alembic
   # histories in one database fight over `alembic_version`.
   POSTGRES_DB: "canvas"
+  # Compared as a string, not resolved -- it must match users' JWT_ISSUER byte
+  # for byte.
+  JWT_ISSUER: "http://users-service"
+  JWKS_URL: "http://users-service/.well-known/jwks.json"
 ---
-# No Secret here, and that absence is the point. users/ needs one for
-# SECRET_KEY and the seeded first user; this service signs nothing and has no
-# accounts. Stage 3 adds SECRET_KEY -- the verification key only, so it can
-# check a token users/ signed without owning a user table.
+# Still no Secret, and that absence is now the point rather than a gap. This
+# service verifies tokens with a public key it fetches at runtime; it holds
+# nothing that could sign one.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

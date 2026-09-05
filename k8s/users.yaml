@@ -24,6 +24,9 @@ metadata:
 data:
   ACCESS_TOKEN_EXPIRE_MINUTES: "10"
   PROJECT_NAME: "Users Microservice"
+  # In-cluster name, matching canvas' JWT_ISSUER exactly -- it is compared as a
+  # string, not resolved.
+  JWT_ISSUER: "http://users-service"
   # This service's own database. One per service, never shared -- two Alembic
   # histories in one database fight over `alembic_version`.
   POSTGRES_DB: "users"
@@ -33,13 +36,15 @@ kind: Secret
 metadata:
   name: users-credentials
 type: Opaque
-# Example values, checked in and therefore public. Replace all three before this
-# is deployed anywhere real. secret_key must decode to at least 32 bytes or the
-# app refuses to start: `openssl rand -hex 32 | tr -d '\n' | base64`.
+# Example values, checked in and therefore public. Replace all three before
+# this is deployed anywhere real. jwt_private_key is the RSA key users signs
+# with; it never leaves this service. Regenerate:
+#   openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \
+#     | base64 | tr -d '\n' | base64
 data:
   email: YWRtaW5AYWRtaW4uY29t
   password: cGFzc3dvcmQ=
-  secret_key: ZGV2LW9ubHktcGxhY2Vob2xkZXItcmVwbGFjZS1tZS13aXRoLW9wZW5zc2wtcmFuZC1oZXgtMzI=
+  jwt_private_key: TFMwdExTMUNSVWRKVGlCUVVrbFdRVlJGSUV0RldTMHRMUzB0Q2sxSlNVVjJRVWxDUVVSQlRrSm5hM0ZvYTJsSE9YY3dRa0ZSUlVaQlFWTkRRa3RaZDJkblUybEJaMFZCUVc5SlFrRlJRekpSUTBWRVdVeFdaRVJzVmtJS1RtSXdRVXB2WjJOdlp6QlRhbGN3WlVSb01VUjRSakZLT1ZSNWNGSlFZMlozUVRCRFVqVmpVREpKYlcxc2JtaEpjbkJhWWtsck5uVkJMM1JuUm1KVVFRbzFLemM0V21WNWNIRkZiQ3N6YTBWRFpXRkhjRFpWYlRWd01IUmFXVzR2ZW1Sc1FrUkVNbVJhZUdaaVV6aDFXRkI2VlhOUlZIWnpZMDVZWTJZck1tcHRDbTk2UkhsRlFqUkVhMHR3UmpkcmIyWklWRXRFZG10WVlpOVBRMnhOU0hKdFEyMUlhMUJHVURoSlpXYzJWRkZwTVdsQ2FHZExNSFJGV1hGV1ZuZzJTa01LY21wcmExVjJOMmx3YkZwbVFtVjBNSE14ZUUxUk9HeGpTWEZIY0ZjeFRteHBVV0ZSYjNBMmFXbzRXRFJTTURkb1IwSmpabkJTYUdjeGJUZFhOaXR2U1FwSFpYSjBWM1I0ZWxVd1kwcHRWVXhqWWsxT2JrUlFWMWRMVms0M2NGbE9OblpoYUd4aVJtcG5TMnhwU2xCaFJtVm9TbTlITVdWdlkwWkROVW95ZEROR0NscEdWVTlKUzA0M1FXZE5Ra0ZCUlVOblowVkJRM3BuZFdOQ2JFeG5VRTlLWW5jM1ExZEdhVWMxTlVKWlZYRjVVRXMxY2preFZHRnZPRmt3WkRBeVVGSUtMMDEyYWxsVFJVMUlVMk5qTjJweU1FazNSbEIzTUU0NE5saDVTVkpLVjBKbU5rTnViSHBWYkVkU2NYQnFOWGhoUkhrNWVYTjBWMUZQZEZGblRVNTJPUW9yV0hoMWJUTnZLM2xCYlVkV1RqQnpTbHAwUkZKRWJFRm1lU3RTWVd4QlpGZEtiSGxSVjNsYWJFZHRZU3RrZDJWQ2QxWlRiakJoWlRSV2FWUmpZMlpOQ2taNVFtRlNiRVJTYldad2MybDFOMjQ1V1dSTk5sZzJOMVl6VEhWUlJWSnRjRlZzWjB0SlowVlVNalZ1VTIxRGFtd3JaRWhFVmpoSVdFaEZSREpIVlNzS2FHbHJibWhhTnpJM0szUTBTek54ZDBOUVExazBNRTRyYlZwYWVUUlFPR00zYlVacVVGTlpOa3h1WjFaQ2JrUjBhM0prYW5OaU1FdzVTWFoyY0ZSelNRcEVVREZhV1c1QkszQnNjSFphYlVOWk9WcDNNa3B0Y0ZCYVlYSlVRamNyTW14Q1VVbGtSbXRYTlZGTFFtZFJSRzlLWlVsVFRETnhaa0pZZG01RWVtWXJDbnBaUm05dFFYSkxjRTlpT1VSbFpVVnZURFpLTmxNNVRsQXdSRkoyYkZJelkyVkpRMFoxT1RnM2RISkZVM2hWV1VZME5rVlhSVXhSTXpnMGFsSXlUbW9LU1dKaFRIUTRiMFZaT0ZWUmRqVmhXbWxRWkRRdlVFVjJNbTVZYzAxUk5YSTFTRFV4WlZKYWFVOU1LM0J3UVZobWJtWXJNbkZsYVhaQllVNURZbmR5YndwVmVuVTNLM0JRVm5jeFVuZGFLMk5PYkM5TGFXZGtXSGRRVVV0Q1oxRkVTU3RqTjFKVVF6UXZabXc1U2tGWU15OUVNa2hQS3pGTU9WTTRNbTlTUzJ4VkNtTmFNbU53VkVOR1pXNTZZWGd4WTJoVVJGZEVOakJhWWtocWJqZGhlbUZKVUhvNFIzRlJhMUJoVUVoeE1YZHFVbFk1YkRkTE5qSnVhM2RyUjJvNFVtTUtabFphZGpNclMzZGtTVEpSVUZka1IwTkpZWGhIVW1sRGN6a3JPRzVTZG1zNWNVMVZaa2c1Wml0UGMzRjJTVXR0TkdsblRIVmpNMGxXVHpKRGNGSllNZ3BOZFhvM05rTnpiVVozUzBKblIyWXpOVEp4Y214MVp6TlNXV3g1SzBkdlIxVmhiWFJTYkVGQ1ZVYzBUekY0ZHk4dldGYzBWMGhZY0VkVVpWZFlVeTkwQ21OblNISnJZa0pNVEZCRWVXa3llbmg0SzAxbWQwUlVXblIyUmpNelJuZGxWV2x1TmpCMEwzRmhkWGxaVlZoT1RITXdSMlJVYzNSWGRFczViVkJSV1RNS1NFTmxlVnByVEhoR1Z6RTVVbmxCYVVjNE9FMUJNbWt4WmtFclduVmlTRmszVVhwQlMxbDBNelJ2TlVKRGJYRTVTRmMyU1ZwWE9HeEJiMGRCVnpSdE9BcGpORkExVWtvMGQyeEVXVVI0TVhGblQwRkJjM2x2V0hWU1FXZFRRVUUxU0hSWlRtWXlSWFo2T1d0dU5VYzBaREJyU1U1dE5XcFhZMUI2UjFWQmRtRmlDbkJHVERGa00yeGlVbkJXZFhoTWNqUnhZWE0xVTNsM2FsaHJUelZOYXpnNFVWaFNPVGhrVlVWaVdVRnhUemRJUTJRMFRuZHpTV1I0UkhBeVdXbFBOekVLVmtjeGIweHlVbGh0U0RKSlNFczNRbWR4VnpoWWRGTm1ORmhQUkhvd1JtVjNNVmcxTkZRd1EyZFpRbWRMZWtGc2FGVllUSFJrZDNOUlpFOTZUR3R5TndwcWEzSlBOa1Y1U2xKSWVrSkxNRlZXZG1WM1MwdDNhVkF5ZGpZdlRrRTBZVTR6V2xwME5EaENaMEpGVkdaT1ZXcGpXRGxJUWpWQ1lrdElMMDlNY2xoWkNpdFRZemhFYkUxcU9XTnVVWGs0SzFaS04xaFNiM1ozY2toemNIbEhXVlJzUVN0cEwwOXpha3RxZVVGaVpYZExaMVpvY0RoaFExZFZXbEkxVjB4SmJsQUtNekpXYWtsTVYzWmFWM0J3U0RoRVZGVnhWMU5sUVQwOUNpMHRMUzB0UlU1RUlGQlNTVlpCVkVVZ1MwVlpMUzB0TFMwSw==
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -98,11 +103,11 @@ spec:
                 secretKeyRef:
                   name: users-credentials
                   key: password
-            - name: SECRET_KEY
+            - name: JWT_PRIVATE_KEY
               valueFrom:
                 secretKeyRef:
                   name: users-credentials
-                  key: secret_key
+                  key: jwt_private_key
           envFrom:
             - configMapRef:
                 name: postgres-configuration
@@ -141,11 +146,11 @@ spec:
                 secretKeyRef:
                   name: users-credentials
                   key: password
-            - name: SECRET_KEY
+            - name: JWT_PRIVATE_KEY
               valueFrom:
                 secretKeyRef:
                   name: users-credentials
-                  key: secret_key
+                  key: jwt_private_key
           envFrom:
             - configMapRef:
                 name: postgres-configuration

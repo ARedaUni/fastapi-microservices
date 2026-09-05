@@ -7,13 +7,19 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     """Trimmed from `users/`: this service owns tiles, not accounts.
 
-    No FIRST_USER_*, and no SECRET_KEY yet -- stage 3 adds the key when this
-    service starts verifying tokens `users` signed. Extra variables in the
-    environment are ignored, which is why the shared .env can carry the users
-    service's settings without this refusing to start.
+    No FIRST_USER_*, and no signing key: this service verifies tokens and
+    cannot mint one. Extra variables in the environment are ignored, which is
+    why the shared .env can carry users' settings without this refusing to
+    start.
     """
 
     PROJECT_NAME: str
+
+    # The whole of what this service knows about identity. No shared secret, no
+    # user table, no import from users -- swap these two for an IdP's and
+    # nothing else here changes.
+    JWT_ISSUER: str
+    JWKS_URL: str
 
     POSTGRES_DB: str
     POSTGRES_HOST: str

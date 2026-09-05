@@ -8,14 +8,14 @@ help: ## Show this help
 .PHONY: lint
 lint:  ## Linter code
 	@echo "🚨 Linting code..."
-	@docker compose exec -T api sh -c 'ruff check app tests load && ruff format --check app tests load && mypy app tests'
+	@docker compose exec -T api sh -c 'ruff check app tests load contract && ruff format --check app tests load contract && mypy app tests'
 	@docker compose exec -T canvas-api sh -c 'ruff check app tests && ruff format --check app tests && mypy app tests'
 
 
 .PHONY: format
 format:  ## Format code
 	@echo "🎨 Formatting code..."
-	@docker compose exec -T api sh -c 'ruff check --fix app tests load && ruff format app tests load'
+	@docker compose exec -T api sh -c 'ruff check --fix app tests load contract && ruff format app tests load contract'
 	@docker compose exec -T canvas-api sh -c 'ruff check --fix app tests && ruff format app tests'
 
 
@@ -24,6 +24,12 @@ tests:  ## Run tests
 	@echo "🍜 Running tests..."
 	@docker compose exec -T api pytest -v tests --cov app --cov-report=term-missing:skip-covered --cov-fail-under 69
 	@docker compose exec -T canvas-api pytest -v tests --cov app --cov-report=term-missing:skip-covered --cov-fail-under 90
+
+
+.PHONY: contract
+contract:  ## Run the cross-service contract tests against the running stack
+	@echo "🤝 Checking the two services still agree..."
+	@docker compose exec -T api pytest -v contract
 
 
 .PHONY: migrations

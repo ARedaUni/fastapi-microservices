@@ -8,10 +8,18 @@ from pydantic import EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.keys import ALGORITHM, load_private_key, public_jwk
 from app.crud.users import crud_user
 from app.models.users import User
 
-ALGORITHM = "HS256"
+# Who may accept a token this service signs. A constant, not a setting:
+# widening it is a trust decision, not a deployment knob.
+AUDIENCES = ["users", "canvas"]
+AUDIENCE = "users"  # this service's own name, pinned when verifying
+
+PRIVATE_KEY = load_private_key(settings.JWT_PRIVATE_KEY.get_secret_value())
+PUBLIC_KEY = PRIVATE_KEY.public_key()
+PUBLIC_JWK = public_jwk(PRIVATE_KEY)
 
 # bcrypt hashes at most 72 bytes and raises on anything longer. passlib used to
 # truncate silently, so we keep doing that; test_a_password_longer_than_72_bytes
@@ -24,13 +32,21 @@ def _bcrypt_bytes(password: str) -> bytes:
 
 
 def create_access_token(user: User) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(
-        minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
-    )
+    # Registered claim names (RFC 7519 4.1), not a bespoke user_id: a verifier
+    # written by someone else already validates iss/aud/exp for free. `kid`
+    # names the signing key, which is what lets two be live during a rotation.
+    now = datetime.now(timezone.utc)
     return jwt.encode(
-        {"exp": expire, "user_id": str(user.id)},
-        key=settings.SECRET_KEY.get_secret_value(),
+        {
+            "iss": settings.JWT_ISSUER,
+            "sub": str(user.id),
+            "aud": AUDIENCES,
+            "iat": now,
+            "exp": now + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+        },
+        key=PRIVATE_KEY,
         algorithm=ALGORITHM,
+        headers={"kid": PUBLIC_JWK["kid"]},
     )
 
 

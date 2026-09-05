@@ -115,24 +115,49 @@ before §5. **Not built.**
 
 ### 5. Identity without a user table
 
-`canvas` verifies a token someone else signed. Today `owner` is a free-text
-string (see the comment in `canvas/app/models/claims.py`) — literally
-anyone can type "ada" into the request body and claim a tile as her. Closing
-that is stage 4 of the build order below, and it's also where the project's
-bigger identity decision lands:
+`canvas` verifies a token someone else signed. `owner` used to be a free-text
+string — anyone could type "ada" into the request body and claim a tile as
+her. It is now the `sub` of a token `users` signed, and `canvas` holds no key
+that could mint one. **Done** (stages 4a and 4b below). The decision behind it:
 
-| Option                                                                                    | What you get                                                                                                                         | What you now own                                                                                                    |
-| ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
-| `users` keeps signing, `canvas` verifies with the shared `SECRET_KEY`                     | Fastest to build, already how `users`/`canvas` would talk today                                                                      | A hand-rolled IdP: no key rotation, no revocation, one shared secret every service must hold                        |
-| A real IdP (Keycloak) issues the tokens; every service verifies against its JWKS endpoint | Key rotation for free, a standard OIDC/OAuth2 flow, `users` demoted to a profile service that trusts the same tokens it used to sign | Standing infrastructure (Keycloak itself), and a migration for anything that still expects `users` to be the signer |
+| Option                                                                                     | What you get                                                                                                                                                                | What you now own                                                                                                    |
+| ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `users` keeps signing HS256, `canvas` verifies with the shared `SECRET_KEY`                | Fastest to build; already how `users`/`canvas` would talk today                                                                                                             | A shared secret every service must hold. With HMAC the key that verifies **is** the key that signs, so `canvas` could mint a token as any user |
+| **`users` signs RS256 and publishes `/.well-known/jwks.json`** ← **chosen**                | The private key never leaves `users`; `canvas` holds a public key and can verify but not mint. Rotation becomes possible: two keys in the JWKS, sign with the new, drop the old | Token lifecycle — no refresh tokens, no revocation, no sessions unless you build them                               |
+| A real IdP (Keycloak, Hanko, Zitadel) issues tokens; every service verifies against its JWKS | Rotation, revocation, MFA and passkeys for free, on a standard OIDC flow                                                                                                     | Standing infrastructure, and a login ceremony you cannot see inside                                                 |
 
-This repo currently does the first. The stated plan is the second — worth
-deciding explicitly, because it changes what "verify a token" means in every
-service, not just `canvas`. Whichever wins, the shape below doesn't change:
-verifying a signature takes a public key, not a user table, and a service
-that reaches into another's tables is not a second service. Once identity
-exists, `owner` becomes the token's subject claim, not user-supplied text,
-and §4's cooldown key rides along with it.
+**Decided: row 2, and built.** `users/app/core/keys.py` derives the `kid` as
+an RFC 7638 thumbprint so a new key names itself; `canvas/app/core/security.py`
+is thirty lines of `PyJWKClient` behind `asyncio.to_thread`, and knows only
+`JWT_ISSUER`, `JWKS_URL` and the string `"canvas"`.
+
+Row 3 was the stated plan for a while and is what a
+workplace would pick. It was dropped for a specific reason: everything this
+repo is here to teach lives on the *verifying* side of the boundary — a public
+key instead of a shared secret, `iss` and `aud` so a token for one service is
+not valid at another, a JWKS so keys can rotate without redeploying every
+service, and `canvas` importing nothing from `users`. That side is identical
+whether Keycloak signs the token or forty lines of PyJWT do. Buying an IdP buys
+none of it, and costs a black box in the middle of the one thing being studied.
+
+Row 1 is what the repo does today. Row 2 is about forty lines in `users/` and
+thirty in `canvas`.
+
+What row 2 does **not** buy, stated plainly: no refresh tokens, no revocation,
+no MFA, and a login ceremony that is still a password. Acceptable here,
+unacceptable in production — see
+[Before you deploy](../README.md#before-you-deploy).
+
+The escape hatch is the point, not a consolation. `canvas` only ever learns an
+issuer URL and a JWKS URL, so row 3 stays available: point it at Hanko or
+Zitadel later and `canvas` does not change a line. The same holds for the login
+ceremony — replacing the password with passkeys via `py_webauthn` changes how a
+human proves themselves inside `users/` without `canvas` noticing. Each swap
+re-proves the boundary was drawn in the right place, which is better evidence
+than getting it right first time.
+
+Once identity exists, `owner` becomes the token's `sub` claim rather than
+user-supplied text, and §4's cooldown key rides along with it.
 
 ### 6. An honest third service
 
@@ -168,8 +193,9 @@ single service cannot give you, and it is the part that stays fun.
 | 4   | `notifications`       | Outbound email                 | Async consumers, at-least-once, dedupe                                                      |
 
 **Stop at four.** A fifth service repeats a lesson you already paid for.
-Swapping `users` for a real IdP (§5) changes a mechanism inside an existing
-service — it isn't a fifth.
+§5 keeps `users` as the signer rather than adding an IdP, so the count is
+unchanged either way — swapping a signing algorithm now, or swapping in an IdP
+later, changes a mechanism inside an existing service. Neither is a fifth.
 
 ## Build order
 
@@ -181,7 +207,7 @@ and large enough to teach something.
 | 1     | `canvas` with the `claim` table, `POST /api/v1/claims/`, the partial unique index | **✅ Done.** Two concurrent claims for one tile return one `201` and one `409` — `canvas/tests/test_claims.py`             |
 | 2     | Realtime fan-out: publish on claim, a WebSocket/SSE endpoint replays it           | Two browser tabs on the canvas; a claim made in one appears in the other with no refresh                                   |
 | 3     | The arq expiry job                                                                | An unconfirmed hold is `released` after `HOLD_MINUTES`, and a test proves the confirm-vs-expire race resolves one way only |
-| 4     | Identity: JWT verification, no user table (§5's decision made)                    | `canvas` accepts a token the IdP signed and rejects one signed with a different key; `canvas` imports nothing from `users` |
+| 4     | Identity: `users` signs RS256, `canvas` verifies via JWKS — no user table (§5 decided) | `canvas` accepts a token `users` signed and rejects one signed with a different key; `canvas` imports nothing from `users` |
 | 5     | Per-user cooldown on claims, backed by Redis                                      | Two claims from the same user inside the cooldown window: the second is `429`, not `201`                                   |
 | 6     | `payments`, deliberately flaky                                                    | Stopping `payments` mid-claim releases the tile rather than stranding it                                                   |
 | 7     | Idempotency keys on charge                                                        | Replaying the same charge request twice moves money once                                                                   |
@@ -189,6 +215,19 @@ and large enough to teach something.
 
 Stage 1 is done and already contains the interesting race. Stage 6 is where
 it stops being CRUD.
+
+**The order actually taken is 4 first, then a page, then 2.** Stage 4 is pulled
+forward because stage 5's cooldown key *is* the identity — 5 is blocked on 4 and
+nothing else is, while 2 and 3 are blocked on nothing. The page is not on the
+list above and earns its place anyway: it buys the thing neither 2 nor 3 does
+alone, which is being able to see the canvas, log in, and take a tile in a
+browser. Seeing it work is what makes the rest worth building.
+
+| Stage | Build                                                        | Done when                                                                                                                          |
+| ----- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| 4a    | `users` signs RS256 and publishes `/.well-known/jwks.json`   | **✅ Done.** `contract/test_users_publishes.py` — the token verifies against the published key and carries `iss`/`sub`/`aud`         |
+| 4b    | `canvas` verifies that token; `owner` becomes its `sub`      | **✅ Done.** `contract/test_canvas_accepts.py` — no token → `401`, foreign key → `401`, valid → `201` with `owner` = `sub`           |
+| 4c    | A static canvas page                                         | You open a browser, log in, click a tile, and it fills. It holds the token in JS — deliberately wrong, and why a BFF earns its place |
 
 ### Mechanically, per new service
 
@@ -212,8 +251,8 @@ deploy needs a manual `CREATE DATABASE` or a fresh volume.
 
 ## What this repo doesn't have yet
 
-Six gaps, each of which should stay open until the pain arrives. The pain is
-the teaching.
+Five open, one closed. Each should stay open until the pain arrives -- the
+pain is the teaching, and stage 4 is what supplied it for the last row.
 
 | Gap                                    | When it starts hurting                                                                   | What you'd add                                                                            |
 | -------------------------------------- | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
@@ -222,7 +261,7 @@ the teaching.
 | No event bus for cross-service fan-out | Service 4 (`notifications`). `arq` is a job queue — one consumer per job, no fan-out     | Redis Streams (already have Redis) or NATS                                                |
 | No outbox                              | The first time a claim confirms and no email goes out                                    | An `outbox` table written in the same transaction, drained by a worker                    |
 | No cross-service tracing               | Service 3 (`payments`), the first "where did this request die?"                          | OpenTelemetry, trace ID propagated in headers                                             |
-| No contract tests                      | The first time `users`/the IdP changes a token claim `canvas` reads                      | Schemathesis against the OpenAPI schema, or a pinned example payload both sides assert on |
+| ~~No contract tests~~ **closed**       | Arrived with stage 4 — two services now have to agree what a token is                     | `contract/`, run by `make contract`: two base URLs, a login form and RFC 7519, importing neither `app`                     |
 
 ## Honest limits
 
