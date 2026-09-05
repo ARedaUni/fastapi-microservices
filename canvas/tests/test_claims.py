@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.claims import HELD, Claim
-from tests.conftest import auth
+from tests.conftest import FakeEventBus, auth
 
 CLAIMS = "/api/v1/claims/"
 
@@ -24,6 +24,32 @@ async def test_claiming_a_free_tile_holds_it(client: AsyncClient):
     assert (body["x"], body["y"]) == (4, 7)
     assert body["status"] == HELD
     assert datetime.fromisoformat(body["expires_at"]) > datetime.now(timezone.utc)
+
+
+async def test_claiming_a_tile_publishes_a_claim_event(
+    client: AsyncClient, fake_events: FakeEventBus
+):
+    """Stage 2: everyone else has to see this happen without asking."""
+    res = await client.post(CLAIMS, json=a_claim())
+
+    assert res.status_code == 201
+    assert len(fake_events.published) == 1
+    event = fake_events.published[0]
+    assert (event.x, event.y) == (4, 7)
+    assert event.status == HELD
+
+
+async def test_a_rejected_claim_publishes_no_event(
+    client: AsyncClient, fake_events: FakeEventBus
+):
+    """The loser of a race changed nothing, so nobody should hear about it."""
+    await client.post(CLAIMS, json=a_claim())
+    fake_events.published.clear()
+
+    res = await client.post(CLAIMS, json=a_claim(colour="#00ff00"))
+
+    assert res.status_code == 409
+    assert fake_events.published == []
 
 
 async def test_claiming_a_taken_tile_is_rejected(client: AsyncClient):

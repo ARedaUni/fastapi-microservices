@@ -88,12 +88,28 @@ _your_ screen without you asking. That's a different problem than contention:
 fan-out, not exclusion.
 
 The mechanical answer is a pub/sub channel — `claim_tile` publishing an event
-in the same transaction it commits, and an SSE endpoint replaying it to every
-connected client. The lesson underneath: a broadcast to N open connections is
-not a database write, and a connection that's been open for an hour needs its
-own answer to "is this client's auth still valid," because a bearer token
-checked once at `connect` time doesn't get re-checked on every frame the way
-an HTTP request does. **Not built** — tracked in the gaps table below.
+right after it commits, and an SSE endpoint replaying it to every connected
+client. **Built**: `GET /api/v1/claims/stream`, `app/ports/publisher.py` +
+`app/ports/subscriber.py` (the seams), `app/adapters/redis_publisher.py`
+(Redis behind them).
+
+The auth lesson stated here originally doesn't actually land for canvas: the
+stream is unauthenticated, same rule as `list_claims` below it — the canvas is
+the public artefact, watching it needs no more identity than reading it does.
+So there is no long-lived bearer token on this connection to re-check in the
+first place. The lesson still holds in general — a connection open for an hour
+needs its own answer to "is this client's auth still valid," because a token
+checked once at `connect` doesn't get re-checked on every frame the way an
+HTTP request does — it just isn't one this service had to solve. It would
+resurface the moment a live channel here carried something *not* public (a
+private notification, an authenticated presence list); nothing here needs
+that yet.
+
+The event is not published inside `claim_tile`'s transaction, despite the
+paragraph above once saying so: Redis isn't participating in that Postgres
+transaction, so "commit, then publish" is what actually happens, and a
+publish that fails after a successful commit is silently lost. That gap is
+real and is not closed by this stage — see "No outbox" in the gaps table.
 
 **SSE, not WebSocket — decided.** The write path already answers
 synchronously: `POST /api/v1/claims/` returns `201` or `409` to the claimant
@@ -123,16 +139,33 @@ the right tool for stage 8 (`notifications`, cross-service fan-out — see the
 gaps table) where no polling endpoint exists to fall back on; this decision
 is local to §3, not a blanket one.
 
-**A swappable publisher, not a bare Redis client — decided.** This is
-`canvas`'s first outbound call to anything besides its own Postgres, so
-`claim_tile` calls a small publisher seam — one function or `Protocol`,
-`publish_claim_event(event) -> None` — rather than importing `redis.asyncio`
-at the call site. Two things that buys, both concrete: tests substitute an
-in-memory fake instead of standing up real Redis, and if stage 8 moves
-cross-service fan-out onto Streams or NATS, only the adapter behind the seam
-changes — `claim_tile` and its transaction boundary don't. Kept to exactly
-one method on one interface; nothing configurable beyond the one thing
-actually swapped between prod and tests.
+**A swappable publisher, not a bare Redis client — decided and built.** This
+is `canvas`'s first outbound call to anything besides its own Postgres, so
+`claim_tile` calls a `Publisher` port — `publish_claim_event(event) -> None`,
+`app/ports/publisher.py` — rather than importing `redis.asyncio` at the call
+site. The SSE endpoint gets the same treatment on the read side: a
+`Subscriber` port (`app/ports/subscriber.py`) it reads through instead of
+touching Redis directly. `app/adapters/redis_publisher.py` is the one
+concrete implementation of both, and is the only file that imports
+`redis.asyncio` in this service.
+
+Ports and adapters get their own top-level packages rather than living in
+`app/core/` alongside config, the database engine and JWT verification: those
+are generic app plumbing every request touches, where this is one named seam
+with one production implementation. Filing it under `core/` would have made
+"where's the interface, where's Redis" a question you answer by reading the
+file, not by reading the file tree.
+
+Two things this buys, both concrete: tests substitute an in-memory fake
+(`FakeEventBus` in `canvas/tests/conftest.py`) instead of standing up real
+Redis, and if stage 8 moves cross-service fan-out onto Streams or NATS, only
+`app/adapters/` changes — `claim_tile`, the stream endpoint, and the ports
+they depend on don't. `RedisPublisher` implementing both `Publisher` and
+`Subscriber` in one class was a deliberate choice over two separate adapter
+classes: one Redis connection, two capabilities over it, and nothing today
+needs them to vary independently. One real-Redis test still exists
+(`test_redis_publisher_delivers_to_a_real_subscriber`) precisely because the
+fakes can't catch a mistake in how the adapter actually talks to Redis.
 
 ### 4. One claim per cooldown
 
@@ -231,7 +264,7 @@ single service cannot give you, and it is the part that stays fun.
 | #   | Service               | Owns                           | The lesson it exists to teach                                                               |
 | --- | --------------------- | ------------------------------ | ------------------------------------------------------------------------------------------- |
 | 1   | `users` ✅            | Accounts, login, token signing | Auth, the template                                                                          |
-| 2   | `canvas` — stage 1 ✅ | Tiles, claims                  | Contention, expiring holds, realtime fan-out, per-user rate limiting, the identity boundary |
+| 2   | `canvas` — stages 1–2 ✅ | Tiles, claims                  | Contention, expiring holds, realtime fan-out, per-user rate limiting, the identity boundary |
 | 3   | `payments`            | Charges, refunds               | Idempotency, timeouts, compensation, sagas                                                  |
 | 4   | `notifications`       | Outbound email                 | Async consumers, at-least-once, dedupe                                                      |
 
@@ -248,7 +281,7 @@ and large enough to teach something.
 | Stage | Build                                                                             | Done when                                                                                                                  |
 | ----- | --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | 1     | `canvas` with the `claim` table, `POST /api/v1/claims/`, the partial unique index | **✅ Done.** Two concurrent claims for one tile return one `201` and one `409` — `canvas/tests/test_claims.py`             |
-| 2     | Realtime fan-out: publish on claim, an SSE endpoint replays it                    | Two browser tabs on the canvas; a claim made in one appears in the other with no refresh                                   |
+| 2     | Realtime fan-out: publish on claim, an SSE endpoint replays it                    | **Backend done, proven end-to-end against real Redis** (`canvas/tests/test_events.py`; a `POST` while curling `GET /api/v1/claims/stream` delivers the claim as a `data:` frame). `canvas.html` now opens an `EventSource` instead of polling, but two-browser-tabs was not independently checked in an actual browser. |
 | 3     | The arq expiry job                                                                | An unconfirmed hold is `released` after `HOLD_MINUTES`, and a test proves the confirm-vs-expire race resolves one way only |
 | 4     | Identity: `users` signs RS256, `canvas` verifies via JWKS — no user table (§5 decided) | `canvas` accepts a token `users` signed and rejects one signed with a different key; `canvas` imports nothing from `users` |
 | 5     | Per-user cooldown on claims, backed by Redis                                      | Two claims from the same user inside the cooldown window: the second is `429`, not `201`                                   |
@@ -299,7 +332,7 @@ pain is the teaching, and stage 4 is what supplied it for the last row.
 
 | Gap                                    | When it starts hurting                                                                   | What you'd add                                                                            |
 | -------------------------------------- | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| No realtime channel                    | The moment two people look at the canvas at once — this is the whole point of the domain | Redis Pub/Sub, published from `claim_tile` behind a swappable publisher interface, replayed over SSE |
+| ~~No realtime channel~~ **closed**     | Arrived with stage 2                                                                      | Redis Pub/Sub behind `app/ports/publisher.py` + `app/ports/subscriber.py`, `app/adapters/redis_publisher.py`, replayed over `GET /api/v1/claims/stream` |
 | No rate limiting                       | The moment one user scripts a claim loop                                                 | A Redis counter or token bucket, keyed by the identity §5 introduces                      |
 | No event bus for cross-service fan-out | Service 4 (`notifications`). `arq` is a job queue — one consumer per job, no fan-out     | Redis Streams (already have Redis) or NATS                                                |
 | No outbox                              | The first time a claim confirms and no email goes out                                    | An `outbox` table written in the same transaction, drained by a worker                    |

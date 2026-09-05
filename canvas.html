@@ -320,6 +320,7 @@
         let owner = null;
         let claims = {};
         let isLoading = false;
+        let eventSource = null;
 
         async function init() {
             token = localStorage.getItem("jwt_token");
@@ -332,13 +333,40 @@
                 userInfo.textContent = `👤 ${owner}`;
                 authButton.textContent = "Logout";
                 authButton.onclick = logout;
-                await loadCanvas();
-                setInterval(refreshCanvas, 2000);
+                connectStream();
             } else {
                 userInfo.textContent = "";
                 authButton.textContent = "Login";
                 authButton.onclick = login;
+                disconnectStream();
                 showLoginPrompt();
+            }
+        }
+
+        function connectStream() {
+            disconnectStream();
+            eventSource = new EventSource(`${CANVAS_API}/api/v1/claims/stream`);
+
+            // Fires on the first connect and on every automatic reconnect alike.
+            // A reconnect is a plain HTTP request with no memory of what it
+            // missed while disconnected, so ground truth comes from a full
+            // refetch here; onmessage below only has to carry the live tail.
+            eventSource.onopen = () => loadCanvas();
+
+            eventSource.onmessage = (e) => {
+                const claim = JSON.parse(e.data);
+                const key = `${claim.x},${claim.y}`;
+                claims[key] = claim;
+                updateTile(claim.x, claim.y);
+            };
+            // No onerror handling needed: EventSource retries on its own, and
+            // onopen already re-syncs state whenever a retry succeeds.
+        }
+
+        function disconnectStream() {
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
             }
         }
 
@@ -368,6 +396,7 @@
         }
 
         async function loadCanvas() {
+            if (isLoading) return;
             const content = document.getElementById("content");
             content.innerHTML = `
                 <div class="loading">
@@ -384,14 +413,12 @@
 
                 if (!resp.ok) throw new Error(`Failed to load claims: ${resp.status}`);
 
+                // A bare array of claims, not { claims: [...] }.
                 const data = await resp.json();
                 claims = {};
-
-                if (data.claims) {
-                    data.claims.forEach(claim => {
-                        claims[`${claim.x},${claim.y}`] = claim;
-                    });
-                }
+                data.forEach(claim => {
+                    claims[`${claim.x},${claim.y}`] = claim;
+                });
 
                 renderGrid();
             } catch (e) {
@@ -399,30 +426,6 @@
                 content.innerHTML = `<div class="login-prompt"><h2>Error</h2><p>${e.message}</p></div>`;
             } finally {
                 isLoading = false;
-            }
-        }
-
-        async function refreshCanvas() {
-            if (isLoading) return;
-            try {
-                const resp = await fetch(`${CANVAS_API}/api/v1/claims/`, {
-                    method: "GET",
-                    headers: { "Accept": "application/json" }
-                });
-                if (resp.ok) {
-                    const data = await resp.json();
-                    if (data.claims) {
-                        data.claims.forEach(claim => {
-                            const key = `${claim.x},${claim.y}`;
-                            if (!claims[key] || claims[key].colour !== claim.colour) {
-                                claims[key] = claim;
-                                updateTile(claim.x, claim.y);
-                            }
-                        });
-                    }
-                }
-            } catch (e) {
-                console.error("Refresh error:", e);
             }
         }
 
