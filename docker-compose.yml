@@ -120,7 +120,7 @@ services:
       start_period: 30s
     depends_on:
       canvas-migrate: {condition: service_completed_successfully}
-    # No redis dependency: nothing here enqueues a job until stage 2.
+      redis: {condition: service_started}
 
   # Load generator. Behind a profile, so `make up` and CI never start it --
   # `docker compose up` skips profiled services unless the profile is named.
