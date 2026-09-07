@@ -47,6 +47,9 @@ class RedisPublisher(Publisher, Subscriber):
     async def aclose(self) -> None:
         await self._client.aclose()
 
+    async def ping(self) -> None:
+        await self._client.ping()
+
 
 def create_client(config: Optional[RedisConfig] = None) -> "redis.Redis":
     """One place that decides `decode_responses=True`.
