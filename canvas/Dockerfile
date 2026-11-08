@@ -1,5 +1,4 @@
-# Two tails, not users/'s three: no arq worker until stage 2 gives this service
-# a hold to expire. `prod` stays last so an untargeted build gets the lean one.
+# `prod` stays last so an untargeted build gets the lean one.
 FROM python:3.13-slim AS base
 
 ENV PYTHONUNBUFFERED=1 \
@@ -24,6 +23,10 @@ RUN pip install -r requirements-dev.txt
 COPY ./pyproject.toml /app/pyproject.toml
 COPY ./tests /app/tests
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "80", "--reload"]
+
+
+FROM base AS worker
+CMD ["arq", "app.worker.WorkerSettings"]
 
 
 FROM base AS prod

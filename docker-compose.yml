@@ -122,6 +122,19 @@ services:
       canvas-migrate: {condition: service_completed_successfully}
       redis: {condition: service_started}
 
+  canvas-worker:
+    build:
+      context: canvas
+      target: worker
+    env_file: .env
+    environment:
+      POSTGRES_DB: canvas
+    volumes:
+      - ./canvas/app:/app/app
+    depends_on:
+      canvas-migrate: {condition: service_completed_successfully}
+      redis: {condition: service_started}
+
   # Load generator. Behind a profile, so `make up` and CI never start it --
   # `docker compose up` skips profiled services unless the profile is named.
   locust:

@@ -16,3 +16,5 @@ pyjwt[crypto]==2.13.0
 # Stage 2: the Pub/Sub client behind app/adapters/redis_publisher.py. Pinned to
 # what arq already pulls into users/worker, so the fleet runs one version.
 redis==5.3.1
+# Stage 3: expiry job worker. Pinned to what users/worker already pulls.
+arq==0.28.0
