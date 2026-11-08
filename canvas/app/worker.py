@@ -1,11 +1,10 @@
 """Stage 3: background jobs for canvas, run by arq in its own process."""
 
-from datetime import datetime, timezone
 from typing import Any
 
 from arq import cron
 from arq.connections import RedisSettings
-from sqlalchemy import and_, update
+from sqlalchemy import and_, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.adapters.redis_publisher import RedisConfig, RedisPublisher, create_client
@@ -26,13 +25,15 @@ async def release_expired(session: AsyncSession, publisher: Publisher) -> None:
 
     The WHERE re-checks status, so a claim confirmed in the meantime is left
     alone, and running this twice is a no-op -- arq may run a job more than once.
+    Postgres's clock, same as confirm_claim, so the two can't disagree about
+    which side of the deadline a hold is on.
     """
     stmt = (
         update(Claim)
         .where(
             and_(
                 Claim.status == HELD,
-                Claim.expires_at < datetime.now(timezone.utc),
+                Claim.expires_at <= func.now(),
             )
         )
         .values(status="released")

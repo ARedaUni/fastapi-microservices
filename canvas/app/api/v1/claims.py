@@ -3,12 +3,12 @@ from typing import AsyncIterator, List
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import current_subject, get_publisher, get_session, get_subscriber
-from app.models.claims import HELD, HOLD_MINUTES, LIVE_STATUSES, Claim
+from app.models.claims import CONFIRMED, HELD, HOLD_MINUTES, LIVE_STATUSES, Claim
 from app.ports.publisher import Publisher
 from app.ports.subscriber import Subscriber
 from app.schemas.claim import ClaimCreate, ClaimRead
@@ -58,6 +58,51 @@ async def claim_tile(
     event = ClaimRead.model_validate(claim)
     await publisher.publish_claim_event(event)
     return event
+
+
+@router.post("/{claim_id}/confirm", response_model=ClaimRead)
+async def confirm_claim(
+    claim_id: int,
+    owner: str = Depends(current_subject),
+    session: AsyncSession = Depends(get_session),
+    publisher: Publisher = Depends(get_publisher),
+) -> ClaimRead:
+    """Keep a held tile, if its deadline hasn't passed.
+
+    The UPDATE is the check, same as claim_tile's INSERT. Postgres re-checks
+    the WHERE on the row it locks, so a sweep releasing this claim at the same
+    instant and this confirm cannot both win. Postgres's clock, not this
+    process's, so the worker and every API replica judge one deadline.
+    """
+    confirmed = await session.scalar(
+        update(Claim)
+        .where(
+            Claim.id == claim_id,
+            Claim.owner == owner,
+            Claim.status == HELD,
+            Claim.expires_at > func.now(),
+        )
+        .values(status=CONFIRMED)
+        .returning(Claim)
+    )
+    await session.commit()
+    if confirmed is not None:
+        event = ClaimRead.model_validate(confirmed)
+        await publisher.publish_claim_event(event)
+        return event
+
+    # Nothing matched. The decision is already made; this read only explains it.
+    claim = await session.get(Claim, claim_id, populate_existing=True)
+    if claim is None:
+        raise HTTPException(status_code=404, detail="No such claim")
+    if claim.owner != owner:
+        raise HTTPException(status_code=403, detail="Not your claim")
+    if claim.status == CONFIRMED:
+        return ClaimRead.model_validate(claim)  # a retry of a confirm that landed
+    raise HTTPException(
+        status_code=409,
+        detail=f"The hold on ({claim.x}, {claim.y}) has lapsed",
+    )
 
 
 @router.get("/", response_model=List[ClaimRead])

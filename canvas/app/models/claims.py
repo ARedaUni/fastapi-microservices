@@ -15,9 +15,10 @@ GRID_SIZE = 100
 LIVE_STATUSES = ("held", "confirmed")
 
 HELD = "held"
+CONFIRMED = "confirmed"
 
-# How long a tile stays yours before you have to confirm. Stage 2's worker
-# is what enforces it; until then the deadline is recorded and ignored.
+# How long a tile stays yours before you have to confirm. confirm_claim refuses
+# a lapsed hold; app/worker.py's sweep frees its tile.
 HOLD_MINUTES = 10
 
 
@@ -32,8 +33,8 @@ class Claim(Base):
     owner: Mapped[str]
     colour: Mapped[str]
     status: Mapped[str] = mapped_column(default=HELD)
-    # A hold with no deadline is not a hold. Stage 2's arq worker is what reads
-    # this column; until it exists an expired hold still occupies its tile.
+    # A hold with no deadline is not a hold. Between the deadline and the next
+    # sweep a lapsed hold still occupies its tile, but can no longer be confirmed.
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
