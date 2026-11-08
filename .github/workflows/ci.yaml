@@ -21,6 +21,13 @@ jobs:
           cp .env.example .env
           make up
 
+      # `make tests` runs the canvas page's model tests with node:test, and the
+      # journeys below need Node too.
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Lint
         run: make lint
 
@@ -32,6 +39,13 @@ jobs:
       # which neither service's own suite can see.
       - name: Contract
         run: make contract
+
+      # Last and fewest: a real browser on canvas.html against the same stack.
+      - name: Browser journeys
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          make e2e
 
       - name: Dump logs on failure
         if: failure()

@@ -24,6 +24,12 @@ tests:  ## Run tests
 	@echo "🍜 Running tests..."
 	@docker compose exec -T api pytest -v tests --cov app --cov-report=term-missing:skip-covered --cov-fail-under 69
 	@docker compose exec -T canvas-api pytest -v tests --cov app --cov-report=term-missing:skip-covered --cov-fail-under 90
+	@node --test canvas-model.test.js
+
+
+.PHONY: e2e
+e2e:  ## Run the browser journeys for canvas.html against the running stack
+	@npx playwright test
 
 
 .PHONY: contract

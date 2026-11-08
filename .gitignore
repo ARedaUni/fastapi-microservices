@@ -6,3 +6,8 @@ tags.json
 
 # Local env
 .env
+
+# Browser journeys (package.json)
+node_modules/
+test-results/
+playwright-report/

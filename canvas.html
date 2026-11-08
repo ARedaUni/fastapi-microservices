@@ -191,15 +191,6 @@
             filter: brightness(0.98);
         }
 
-        .tile.claiming {
-            animation: pulse 0.6s ease;
-        }
-
-        @keyframes pulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.05); }
-        }
-
         .tile-owner {
             font-size: 8px;
             white-space: nowrap;
@@ -368,6 +359,84 @@
         .stat-dot.empty {
             background: #e0e0e0;
         }
+
+        .board {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+        }
+
+        .grid {
+            user-select: none;
+        }
+
+        /* The block being picked: free tiles show it in the chosen colour,
+           tiles someone already has show red. */
+        .tile.selected {
+            opacity: 1;
+            animation: none;
+            filter: none;
+            box-shadow: inset 0 0 0 1px rgba(0,0,0,0.35);
+        }
+
+        .tile.selected.conflict {
+            box-shadow: inset 0 0 0 2px #e00;
+        }
+
+        .panel {
+            width: 280px;
+            position: sticky;
+            top: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 20px;
+            font-size: 14px;
+            color: #444;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .panel h3 {
+            font-size: 16px;
+            color: #333;
+        }
+
+        .panel .hint {
+            color: #999;
+            line-height: 1.5;
+        }
+
+        .panel .preview {
+            align-self: center;
+            max-width: 100%;
+            max-height: 160px;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+
+        .panel .row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .panel .muted {
+            color: #aaa;
+        }
+
+        .panel .warn {
+            color: #c00;
+        }
+
+        .panel .actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .panel .actions button {
+            flex: 1;
+        }
     </style>
 </head>
 <body>
@@ -387,7 +456,9 @@
         </div>
     </div>
 
+    <script src="canvas-model.js"></script>
     <script>
+        const M = CanvasModel;  // the rules; this script is only the DOM around them
         const USERS_API = "http://localhost:8000";
         const CANVAS_API = "http://localhost:8001";
 
@@ -486,7 +557,7 @@
                 // A bare array of claims, not { claims: [...] }.
                 const data = await resp.json();
                 claims = {};
-                data.forEach(claim => forEachTile(claim, (x, y) => { claims[`${x},${y}`] = claim; }));
+                data.forEach(claim => M.applyClaim(claims, claim));
 
                 renderGrid();
             } catch (e) {
@@ -517,6 +588,15 @@
 
             gridContainer.appendChild(gridInner);
 
+            const panel = document.createElement("div");
+            panel.className = "panel";
+            panel.id = "panel";
+
+            const board = document.createElement("div");
+            board.className = "board";
+            board.appendChild(gridContainer);
+            board.appendChild(panel);
+
             const stats = document.createElement("div");
             stats.className = "stats";
             stats.id = "stats";
@@ -525,23 +605,14 @@
             holds.className = "holds";
             holds.id = "holds";
 
-            wrapper.appendChild(gridContainer);
+            wrapper.appendChild(board);
             wrapper.appendChild(stats);
             wrapper.appendChild(holds);
 
             content.innerHTML = "";
             content.appendChild(wrapper);
             renderPanels();
-        }
-
-        // Browser clock vs Postgres's: fine for a countdown, never for deciding.
-        // The server's 409 is the real answer.
-        function msLeft(claim) {
-            return new Date(claim.expires_at) - Date.now();
-        }
-
-        function isLapsed(claim) {
-            return claim.status === "held" && msLeft(claim) <= 0;
+            renderPanel();
         }
 
         function createTile(x, y) {
@@ -549,53 +620,49 @@
             tile.dataset.x = x;
             tile.dataset.y = y;
             tile.id = `tile-${x}-${y}`;
-            paintTile(tile, claims[`${x},${y}`]);
-            tile.onclick = () => clickTile(x, y);
+            // How the journeys find a tile (e2e/); a new UI keeps the label.
+            tile.setAttribute("aria-label", `(${x}, ${y})`);
+            paintTile(tile, x, y);
+            tile.onmousedown = (e) => { e.preventDefault(); pressTile(x, y); };
+            tile.onmouseenter = () => dragTo(x, y);
             return tile;
         }
 
         function updateTile(x, y) {
             const tile = document.getElementById(`tile-${x}-${y}`);
-            if (tile) paintTile(tile, claims[`${x},${y}`]);
+            if (tile) paintTile(tile, x, y);
         }
 
-        function paintTile(tile, claim) {
-            tile.className = "tile";
-            tile.style.backgroundColor = "white";
-            tile.title = `(${tile.dataset.x}, ${tile.dataset.y})`;
-            if (!claim || claim.status === "released") return;
+        const STATE_CLASSES = {
+            "free": [],
+            "held": ["owned", "held"],
+            "held-mine": ["owned", "held", "mine"],
+            "lapsed": ["owned", "held", "lapsed"],
+            "confirmed": ["owned", "confirmed"],
+        };
 
-            tile.classList.add("owned", claim.status);
-            if (claim.owner === owner) tile.classList.add("mine");
-            if (isLapsed(claim)) tile.classList.add("lapsed");
-            tile.style.backgroundColor = claim.colour;
-            tile.title += ` ${claim.status} by ${claim.owner}`;
-        }
+        function paintTile(tile, x, y) {
+            const claim = M.claimAt(claims, x, y);
+            const state = M.tileState(claim, owner, Date.now());
+            tile.className = ["tile", ...STATE_CLASSES[state]].join(" ");
+            tile.style.backgroundColor = state === "free" ? "white" : claim.colour;
+            tile.title = state === "free" ? `(${x}, ${y})` : `(${x}, ${y}) ${claim.status} by ${claim.owner}`;
 
-        // A claim is a block, x0..x1-1 by y0..y1-1. `claims` maps each tile to
-        // the block covering it, so painting and clicking stay per tile.
-        function forEachTile(c, fn) {
-            for (let y = c.y0; y < c.y1; y++) for (let x = c.x0; x < c.x1; x++) fn(x, y);
-        }
-
-        function liveBlocks() {
-            const byId = new Map(Object.values(claims).map(c => [c.id, c]));
-            return [...byId.values()].filter(c => c.status !== "released");
+            if (!selection || !M.inBlock(selection, x, y)) return;
+            tile.classList.add("selected");
+            if (M.isLive(claim)) tile.classList.add("conflict");
+            else tile.style.backgroundColor = pickColour;
         }
 
         function setClaim(claim) {
-            forEachTile(claim, (x, y) => {
-                const current = claims[`${x},${y}`];
-                // A late "released" for an old block mustn't wipe a newer one here.
-                if (claim.status === "released" && current && current.id !== claim.id) return;
-                claims[`${x},${y}`] = claim;
-                updateTile(x, y);
-            });
+            M.applyClaim(claims, claim).forEach(([x, y]) => updateTile(x, y));
             renderPanels();
+            // Someone took (or freed) tiles inside the block being picked.
+            if (selection && M.overlaps(selection, claim)) renderPanel();
         }
 
         function renderPanels() {
-            const live = Object.values(claims).filter(c => c.status !== "released");  // per tile
+            const live = Object.values(claims).filter(M.isLive);  // one entry per tile
             const held = live.filter(c => c.status === "held").length;
             const stats = document.getElementById("stats");
             if (stats) stats.innerHTML = `
@@ -606,23 +673,20 @@
 
             const holds = document.getElementById("holds");
             if (!holds) return;
-            const mine = liveBlocks()
-                .filter(c => c.status === "held" && c.owner === owner)
-                .sort((a, b) => new Date(a.expires_at) - new Date(b.expires_at));
+            const mine = M.myHolds(claims, owner);
             if (mine.length === 0) {
-                holds.innerHTML = `<h3>Your holds</h3><p style="color:#999">None. Click an empty tile to hold it, then click it again to keep it.</p>`;
+                holds.innerHTML = `<h3>Your holds</h3><p style="color:#999">None yet. Drag out a block and reserve it.</p>`;
                 return;
             }
+            const now = Date.now();
             holds.innerHTML = `<h3>Your holds</h3>` + mine.map(c => {
-                const left = msLeft(c);
-                const time = left > 0
-                    ? `${Math.floor(left / 60000)}:${String(Math.floor(left / 1000) % 60).padStart(2, "0")}`
-                    : "lapsed · awaiting sweep";
-                const button = left > 0 ? `<button onclick="clickTile(${c.x0}, ${c.y0})">Confirm</button>` : "";
+                const time = M.countdown(c, now);
+                // Lapsed holds still get no button; the server would only say 409.
+                const button = time ? `<button onclick="confirmBlock(${c.id})">Confirm</button>` : "";
                 return `<div class="hold-row">
                     <span class="swatch" style="background:${c.colour}"></span>
                     <span>(${c.x0}, ${c.y0}) · ${(c.x1 - c.x0) * (c.y1 - c.y0)} tiles</span>
-                    <span class="time">${time}</span>${button}
+                    <span class="time">${time ?? "lapsed · awaiting sweep"}</span>${button}
                 </div>`;
             }).join("");
         }
@@ -630,30 +694,88 @@
         // Ticks the countdowns, and greys out holds the moment their deadline
         // passes. The tile only clears when the sweep's "released" event lands.
         setInterval(() => {
-            liveBlocks()
+            M.liveBlocks(claims)
                 .filter(c => c.status === "held")
-                .forEach(c => forEachTile(c, updateTile));
+                .forEach(c => M.forEachTile(c, updateTile));
             renderPanels();
         }, 1000);
 
-        function clickTile(x, y) {
-            if (!token) {
-                showStatus("Not logged in", "error");
-                return;
-            }
-            const claim = claims[`${x},${y}`];
-            if (!claim || claim.status === "released") return claimTile(x, y);
-            if (claim.owner !== owner) return showStatus(`(${x}, ${y}) is ${claim.status} by ${claim.owner}`, "error");
-            if (claim.status === "confirmed") return showStatus(`(${x}, ${y}) is already yours`, "info");
-            // Lapsed tiles still go to the server: it decides, and says 409.
-            return confirmTile(claim);
+        function confirmBlock(id) {
+            const claim = M.liveBlocks(claims).find(c => c.id === id);
+            if (claim) confirmTile(claim);
         }
 
-        async function claimTile(x, y) {
-            const color = "#" + Math.floor(Math.random() * 16777215).toString(16).padStart(6, "0");
-            const tile = document.getElementById(`tile-${x}-${y}`);
-            tile?.classList.add("claiming");
+        // Drag-select. Mouse down on a free tile starts a block, moving over
+        // tiles stretches it, and it stays picked after mouse up until Reserve,
+        // Cancel or Esc.
+        let selection = null;
+        let dragFrom = null;
+        let pickColour = randomColour();
 
+        function randomColour() {
+            return "#" + Math.floor(Math.random() * 16777215).toString(16).padStart(6, "0");
+        }
+
+        function pressTile(x, y) {
+            if (!token) return showStatus("Not logged in", "error");
+            const action = M.pressAction(claims, x, y, owner);
+            if (action.kind === "info") return showStatus(action.message, "info");
+            dragFrom = { x, y };
+            setSelection(M.blockBetween(dragFrom, dragFrom));
+        }
+
+        function dragTo(x, y) {
+            if (dragFrom) setSelection(M.blockBetween(dragFrom, { x, y }));
+        }
+
+        function setSelection(next) {
+            const previous = selection;
+            selection = next;
+            if (previous) M.forEachTile(previous, updateTile);
+            if (next) M.forEachTile(next, updateTile);
+            renderPanel();
+        }
+
+        document.addEventListener("mouseup", () => { dragFrom = null; });
+        document.addEventListener("keydown", (e) => { if (e.key === "Escape") setSelection(null); });
+
+        function renderPanel() {
+            const panel = document.getElementById("panel");
+            if (!panel) return;
+            if (!selection) {
+                panel.innerHTML = `<h3>Pick a block</h3>
+                    <p class="hint">Drag across the canvas to choose a block of tiles.
+                    Confirm your holds from the list below the canvas.</p>`;
+                return;
+            }
+            const { x0, y0, x1, y1 } = selection;
+            const w = x1 - x0, h = y1 - y0;
+            const taken = M.takenIn(claims, selection);
+            const scale = Math.min(240 / w, 160 / h, 24);
+            panel.innerHTML = `
+                <h3>Your block</h3>
+                <div class="preview" style="width:${w * scale}px;height:${h * scale}px;background:${pickColour}"></div>
+                <div class="row"><span>(${x0}, ${y0}) → (${x1 - 1}, ${y1 - 1})</span><span>${w}×${h} = ${w * h} tiles</span></div>
+                <div class="row"><span>Colour</span><input type="color" id="pick" value="${pickColour}"></div>
+                <div class="row muted"><span>Price</span><span>coming soon</span></div>
+                ${taken ? `<div class="warn">${taken} of these tiles are taken</div>` : ""}
+                <div class="actions">
+                    <button id="reserve" ${taken ? "disabled" : ""}>Reserve</button>
+                    <button disabled title="Payments are a later stage">Buy</button>
+                </div>
+                <button id="cancel" style="background:#eee;color:#555;box-shadow:none">Cancel (Esc)</button>
+            `;
+            document.getElementById("pick").oninput = (e) => {
+                pickColour = e.target.value;
+                M.forEachTile(selection, updateTile);
+                panel.querySelector(".preview").style.background = pickColour;
+            };
+            document.getElementById("reserve").onclick = reserveSelection;
+            document.getElementById("cancel").onclick = () => setSelection(null);
+        }
+
+        async function reserveSelection() {
+            const block = selection;
             try {
                 const resp = await fetch(`${CANVAS_API}/api/v1/claims/`, {
                     method: "POST",
@@ -661,23 +783,24 @@
                         "Content-Type": "application/json",
                         "Authorization": `Bearer ${token}`
                     },
-                    // One tile for now; drag-select sends a wider block next slice.
-                    body: JSON.stringify({ x0: x, y0: y, x1: x + 1, y1: y + 1, colour: color })
+                    body: JSON.stringify(M.reserveRequest(block, pickColour))
                 });
 
                 if (resp.status === 201) {
+                    setSelection(null);
                     setClaim(await resp.json());
-                    showStatus(`⏳ Holding (${x}, ${y}). Click it again to keep it.`, "success");
+                    pickColour = randomColour();
+                    showStatus(`⏳ Holding ${(block.x1 - block.x0) * (block.y1 - block.y0)} tiles. Confirm it from Your holds.`, "success");
                 } else if (resp.status === 409) {
-                    showStatus("⚡ Someone claimed it first!", "error");
+                    // Someone got there between our last event and this request.
+                    const { detail } = await resp.json();
+                    showStatus(`⚡ ${detail}`, "error");
                     await loadCanvas();
                 } else {
                     await handleError(resp);
                 }
             } catch (e) {
                 showStatus(`Error: ${e.message}`, "error");
-            } finally {
-                tile?.classList.remove("claiming");
             }
         }
 
@@ -690,7 +813,7 @@
 
                 if (resp.ok) {
                     setClaim(await resp.json());
-                    forEachTile(claim, (x, y) => {
+                    M.forEachTile(claim, (x, y) => {
                         const tile = document.getElementById(`tile-${x}-${y}`);
                         tile?.classList.add("just");
                         setTimeout(() => tile?.classList.remove("just"), 500);
