@@ -290,6 +290,81 @@
             background: #667eea;
         }
 
+        .stat-dot.held {
+            background: repeating-linear-gradient(45deg, #667eea 0 2px, #fff 2px 4px);
+        }
+
+        /* Held: striped and see-through. Yours also breathes, because a click keeps it. */
+        .tile.held {
+            background-image: repeating-linear-gradient(45deg, rgba(255,255,255,0.7) 0 1px, transparent 1px 3px);
+            opacity: 0.6;
+        }
+
+        .tile.held.mine {
+            cursor: pointer;
+            animation: breathe 1.2s ease-in-out infinite;
+        }
+
+        @keyframes breathe {
+            0%, 100% { opacity: 0.4; }
+            50% { opacity: 0.9; }
+        }
+
+        /* Past the deadline but not yet swept: the gap between the two is visible. */
+        .tile.lapsed, .tile.held.mine.lapsed {
+            filter: grayscale(1);
+            opacity: 0.25;
+            animation: none;
+            cursor: default;
+        }
+
+        .tile.confirmed.just {
+            animation: pop 0.5s ease;
+        }
+
+        @keyframes pop {
+            0% { transform: scale(1); }
+            50% { transform: scale(2.2); z-index: 20; }
+            100% { transform: scale(1); }
+        }
+
+        .holds {
+            width: 800px;
+            font-size: 13px;
+            color: #444;
+        }
+
+        .holds h3 {
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+
+        .hold-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 6px 0;
+            border-bottom: 1px solid #f0f0f0;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .hold-row .swatch {
+            width: 14px;
+            height: 14px;
+            border-radius: 3px;
+        }
+
+        .hold-row .time {
+            margin-left: auto;
+            min-width: 70px;
+            text-align: right;
+        }
+
+        .hold-row button {
+            padding: 4px 12px;
+            font-size: 12px;
+        }
+
         .stat-dot.empty {
             background: #e0e0e0;
         }
@@ -353,12 +428,7 @@
             // refetch here; onmessage below only has to carry the live tail.
             eventSource.onopen = () => loadCanvas();
 
-            eventSource.onmessage = (e) => {
-                const claim = JSON.parse(e.data);
-                const key = `${claim.x},${claim.y}`;
-                claims[key] = claim;
-                updateTile(claim.x, claim.y);
-            };
+            eventSource.onmessage = (e) => setClaim(JSON.parse(e.data));
             // No onerror handling needed: EventSource retries on its own, and
             // onopen already re-syncs state whenever a retry succeeds.
         }
@@ -449,84 +519,123 @@
 
             gridContainer.appendChild(gridInner);
 
-            const claimedCount = Object.values(claims).filter(c => c.status !== "released").length;
             const stats = document.createElement("div");
             stats.className = "stats";
-            stats.innerHTML = `
-                <div class="stat">
-                    <span class="stat-dot claimed"></span>
-                    <span>${claimedCount} tiles claimed</span>
-                </div>
-                <div class="stat">
-                    <span class="stat-dot empty"></span>
-                    <span>${10000 - claimedCount} tiles free</span>
-                </div>
-            `;
+            stats.id = "stats";
+
+            const holds = document.createElement("div");
+            holds.className = "holds";
+            holds.id = "holds";
 
             wrapper.appendChild(gridContainer);
             wrapper.appendChild(stats);
+            wrapper.appendChild(holds);
 
             content.innerHTML = "";
             content.appendChild(wrapper);
+            renderPanels();
+        }
+
+        // Browser clock vs Postgres's: fine for a countdown, never for deciding.
+        // The server's 409 is the real answer.
+        function msLeft(claim) {
+            return new Date(claim.expires_at) - Date.now();
+        }
+
+        function isLapsed(claim) {
+            return claim.status === "held" && msLeft(claim) <= 0;
         }
 
         function createTile(x, y) {
             const tile = document.createElement("div");
-            tile.className = "tile";
             tile.dataset.x = x;
             tile.dataset.y = y;
             tile.id = `tile-${x}-${y}`;
-
-            const claim = claims[`${x},${y}`];
-            if (claim && claim.status !== "released") {
-                tile.classList.add("owned");
-                tile.style.background = claim.colour;
-                tile.style.color = getTextColor(claim.colour);
-                tile.innerHTML = `<span class="tile-owner">${claim.owner.substring(0, 2)}</span>`;
-            }
-
-            tile.onclick = () => claimTile(x, y);
+            paintTile(tile, claims[`${x},${y}`]);
+            tile.onclick = () => clickTile(x, y);
             return tile;
         }
 
         function updateTile(x, y) {
             const tile = document.getElementById(`tile-${x}-${y}`);
-            if (!tile) return;
+            if (tile) paintTile(tile, claims[`${x},${y}`]);
+        }
 
-            const claim = claims[`${x},${y}`];
-            if (claim && claim.status !== "released") {
-                tile.classList.add("owned");
-                tile.style.background = claim.colour;
-                tile.style.color = getTextColor(claim.colour);
-                tile.innerHTML = `<span class="tile-owner">${claim.owner.substring(0, 2)}</span>`;
-            } else {
-                tile.classList.remove("owned");
-                tile.style.background = "white";
-                tile.style.color = "#333";
-                tile.innerHTML = "";
+        function paintTile(tile, claim) {
+            tile.className = "tile";
+            tile.style.backgroundColor = "white";
+            tile.title = `(${tile.dataset.x}, ${tile.dataset.y})`;
+            if (!claim || claim.status === "released") return;
+
+            tile.classList.add("owned", claim.status);
+            if (claim.owner === owner) tile.classList.add("mine");
+            if (isLapsed(claim)) tile.classList.add("lapsed");
+            tile.style.backgroundColor = claim.colour;
+            tile.title += ` ${claim.status} by ${claim.owner}`;
+        }
+
+        function setClaim(claim) {
+            claims[`${claim.x},${claim.y}`] = claim;
+            updateTile(claim.x, claim.y);
+            renderPanels();
+        }
+
+        function renderPanels() {
+            const live = Object.values(claims).filter(c => c.status !== "released");
+            const held = live.filter(c => c.status === "held").length;
+            const stats = document.getElementById("stats");
+            if (stats) stats.innerHTML = `
+                <div class="stat"><span class="stat-dot claimed"></span><span>${live.length - held} confirmed</span></div>
+                <div class="stat"><span class="stat-dot held"></span><span>${held} held</span></div>
+                <div class="stat"><span class="stat-dot empty"></span><span>${10000 - live.length} free</span></div>
+            `;
+
+            const holds = document.getElementById("holds");
+            if (!holds) return;
+            const mine = live
+                .filter(c => c.status === "held" && c.owner === owner)
+                .sort((a, b) => new Date(a.expires_at) - new Date(b.expires_at));
+            if (mine.length === 0) {
+                holds.innerHTML = `<h3>Your holds</h3><p style="color:#999">None. Click an empty tile to hold it, then click it again to keep it.</p>`;
+                return;
             }
+            holds.innerHTML = `<h3>Your holds</h3>` + mine.map(c => {
+                const left = msLeft(c);
+                const time = left > 0
+                    ? `${Math.floor(left / 60000)}:${String(Math.floor(left / 1000) % 60).padStart(2, "0")}`
+                    : "lapsed · awaiting sweep";
+                const button = left > 0 ? `<button onclick="clickTile(${c.x}, ${c.y})">Confirm</button>` : "";
+                return `<div class="hold-row">
+                    <span class="swatch" style="background:${c.colour}"></span>
+                    <span>(${c.x}, ${c.y})</span>
+                    <span class="time">${time}</span>${button}
+                </div>`;
+            }).join("");
         }
 
-        function getTextColor(hexColor) {
-            const r = parseInt(hexColor.slice(1, 3), 16);
-            const g = parseInt(hexColor.slice(3, 5), 16);
-            const b = parseInt(hexColor.slice(5, 7), 16);
-            const brightness = (r * 299 + g * 587 + b * 114) / 1000;
-            return brightness > 128 ? "#000" : "#fff";
-        }
+        // Ticks the countdowns, and greys out holds the moment their deadline
+        // passes. The tile only clears when the sweep's "released" event lands.
+        setInterval(() => {
+            Object.values(claims)
+                .filter(c => c.status === "held")
+                .forEach(c => updateTile(c.x, c.y));
+            renderPanels();
+        }, 1000);
 
-        async function claimTile(x, y) {
+        function clickTile(x, y) {
             if (!token) {
                 showStatus("Not logged in", "error");
                 return;
             }
-
             const claim = claims[`${x},${y}`];
-            if (claim && claim.status !== "released") {
-                showStatus(`Claimed by ${claim.owner}`, "error");
-                return;
-            }
+            if (!claim || claim.status === "released") return claimTile(x, y);
+            if (claim.owner !== owner) return showStatus(`(${x}, ${y}) is ${claim.status} by ${claim.owner}`, "error");
+            if (claim.status === "confirmed") return showStatus(`(${x}, ${y}) is already yours`, "info");
+            // Lapsed tiles still go to the server: it decides, and says 409.
+            return confirmTile(claim);
+        }
 
+        async function claimTile(x, y) {
             const color = "#" + Math.floor(Math.random() * 16777215).toString(16).padStart(6, "0");
             const tile = document.getElementById(`tile-${x}-${y}`);
             tile?.classList.add("claiming");
@@ -542,25 +651,51 @@
                 });
 
                 if (resp.status === 201) {
-                    const data = await resp.json();
-                    claims[`${x},${y}`] = data;
-                    updateTile(x, y);
-                    showStatus(`✅ Claimed (${x}, ${y})`, "success");
+                    setClaim(await resp.json());
+                    showStatus(`⏳ Holding (${x}, ${y}). Click it again to keep it.`, "success");
                 } else if (resp.status === 409) {
                     showStatus("⚡ Someone claimed it first!", "error");
                     await loadCanvas();
-                } else if (resp.status === 401) {
-                    showStatus("Token expired", "error");
-                    logout();
                 } else {
-                    const errData = await resp.json();
-                    showStatus(`Error: ${errData.detail || resp.statusText}`, "error");
+                    await handleError(resp);
                 }
             } catch (e) {
                 showStatus(`Error: ${e.message}`, "error");
             } finally {
                 tile?.classList.remove("claiming");
             }
+        }
+
+        async function confirmTile(claim) {
+            try {
+                const resp = await fetch(`${CANVAS_API}/api/v1/claims/${claim.id}/confirm`, {
+                    method: "POST",
+                    headers: { "Authorization": `Bearer ${token}` }
+                });
+
+                if (resp.ok) {
+                    setClaim(await resp.json());
+                    const tile = document.getElementById(`tile-${claim.x}-${claim.y}`);
+                    tile?.classList.add("just");
+                    setTimeout(() => tile?.classList.remove("just"), 500);
+                    showStatus(`🔒 (${claim.x}, ${claim.y}) is yours`, "success");
+                } else if (resp.status === 409) {
+                    showStatus("⌛ Too late, the hold lapsed", "error");
+                } else {
+                    await handleError(resp);
+                }
+            } catch (e) {
+                showStatus(`Error: ${e.message}`, "error");
+            }
+        }
+
+        async function handleError(resp) {
+            if (resp.status === 401) {
+                showStatus("Token expired", "error");
+                return logout();
+            }
+            const errData = await resp.json().catch(() => ({}));
+            showStatus(`Error: ${errData.detail || resp.statusText}`, "error");
         }
 
         function showStatus(msg, type = "info") {
