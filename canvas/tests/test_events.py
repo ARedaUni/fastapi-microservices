@@ -65,8 +65,10 @@ async def test_redis_publisher_delivers_to_a_real_subscriber(
     publisher = RedisPublisher(redis_client, channel="canvas-test:claims")
     event = ClaimRead(
         id=1,
-        x=1,
-        y=1,
+        x0=1,
+        y0=1,
+        x1=2,
+        y1=2,
         owner="ada",
         colour="#ff0000",
         status="held",

@@ -21,8 +21,10 @@ async def test_arq_can_run_the_job(racing_sessions: None):
     async with SessionLocal() as s:
         s.add(
             Claim(
-                x=1,
-                y=1,
+                x0=1,
+                y0=1,
+                x1=2,
+                y1=2,
                 owner="ada",
                 colour="#ff0055",
                 status=HELD,
@@ -34,15 +36,19 @@ async def test_arq_can_run_the_job(racing_sessions: None):
     await release_expired_claims({"publisher": FakeEventBus()})
 
     async with SessionLocal() as s:
-        status = await s.scalar(select(Claim.status).where(Claim.x == 1, Claim.y == 1))
+        status = await s.scalar(
+            select(Claim.status).where(Claim.x0 == 1, Claim.y0 == 1)
+        )
     assert status == "released"
 
 
 async def test_an_expired_claim_is_released(session: AsyncSession):
     """A held claim whose hold window passed is released."""
     claim = Claim(
-        x=4,
-        y=7,
+        x0=4,
+        y0=7,
+        x1=5,
+        y1=8,
         owner="ada",
         colour="#ff0055",
         status=HELD,
@@ -60,8 +66,10 @@ async def test_an_expired_claim_is_released(session: AsyncSession):
 async def test_an_unexpired_claim_is_left_alone(session: AsyncSession):
     """Claims with time remaining stay held."""
     claim = Claim(
-        x=5,
-        y=8,
+        x0=5,
+        y0=8,
+        x1=6,
+        y1=9,
         owner="ada",
         colour="#ff0055",
         status=HELD,
@@ -83,8 +91,10 @@ async def test_confirmed_claims_are_not_touched(session: AsyncSession):
     AND expired to be released.
     """
     claim = Claim(
-        x=6,
-        y=9,
+        x0=6,
+        y0=9,
+        x1=7,
+        y1=10,
         owner="ada",
         colour="#ff0055",
         status="confirmed",
@@ -103,8 +113,10 @@ async def test_multiple_expired_claims_are_released(session: AsyncSession):
     """Batch update: all expired held claims are released in one query."""
     claims = [
         Claim(
-            x=i,
-            y=0,
+            x0=i,
+            y0=0,
+            x1=i + 1,
+            y1=1,
             owner="ada",
             colour="#ff0055",
             status=HELD,
@@ -129,16 +141,20 @@ async def test_each_released_tile_is_published(
     session.add_all(
         [
             Claim(
-                x=4,
-                y=7,
+                x0=4,
+                y0=7,
+                x1=5,
+                y1=8,
                 owner="ada",
                 colour="#ff0055",
                 status=HELD,
                 expires_at=datetime(2020, 1, 1, tzinfo=timezone.utc),
             ),
             Claim(
-                x=5,
-                y=8,
+                x0=5,
+                y0=8,
+                x1=6,
+                y1=9,
                 owner="bob",
                 colour="#0055ff",
                 status=HELD,
@@ -150,4 +166,6 @@ async def test_each_released_tile_is_published(
 
     await release_expired(session, fake_events)
 
-    assert [(e.x, e.y, e.status) for e in fake_events.published] == [(4, 7, "released")]
+    assert [(e.x0, e.y0, e.status) for e in fake_events.published] == [
+        (4, 7, "released")
+    ]

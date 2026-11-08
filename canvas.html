@@ -486,9 +486,7 @@
                 // A bare array of claims, not { claims: [...] }.
                 const data = await resp.json();
                 claims = {};
-                data.forEach(claim => {
-                    claims[`${claim.x},${claim.y}`] = claim;
-                });
+                data.forEach(claim => forEachTile(claim, (x, y) => { claims[`${x},${y}`] = claim; }));
 
                 renderGrid();
             } catch (e) {
@@ -574,14 +572,30 @@
             tile.title += ` ${claim.status} by ${claim.owner}`;
         }
 
+        // A claim is a block, x0..x1-1 by y0..y1-1. `claims` maps each tile to
+        // the block covering it, so painting and clicking stay per tile.
+        function forEachTile(c, fn) {
+            for (let y = c.y0; y < c.y1; y++) for (let x = c.x0; x < c.x1; x++) fn(x, y);
+        }
+
+        function liveBlocks() {
+            const byId = new Map(Object.values(claims).map(c => [c.id, c]));
+            return [...byId.values()].filter(c => c.status !== "released");
+        }
+
         function setClaim(claim) {
-            claims[`${claim.x},${claim.y}`] = claim;
-            updateTile(claim.x, claim.y);
+            forEachTile(claim, (x, y) => {
+                const current = claims[`${x},${y}`];
+                // A late "released" for an old block mustn't wipe a newer one here.
+                if (claim.status === "released" && current && current.id !== claim.id) return;
+                claims[`${x},${y}`] = claim;
+                updateTile(x, y);
+            });
             renderPanels();
         }
 
         function renderPanels() {
-            const live = Object.values(claims).filter(c => c.status !== "released");
+            const live = Object.values(claims).filter(c => c.status !== "released");  // per tile
             const held = live.filter(c => c.status === "held").length;
             const stats = document.getElementById("stats");
             if (stats) stats.innerHTML = `
@@ -592,7 +606,7 @@
 
             const holds = document.getElementById("holds");
             if (!holds) return;
-            const mine = live
+            const mine = liveBlocks()
                 .filter(c => c.status === "held" && c.owner === owner)
                 .sort((a, b) => new Date(a.expires_at) - new Date(b.expires_at));
             if (mine.length === 0) {
@@ -604,10 +618,10 @@
                 const time = left > 0
                     ? `${Math.floor(left / 60000)}:${String(Math.floor(left / 1000) % 60).padStart(2, "0")}`
                     : "lapsed · awaiting sweep";
-                const button = left > 0 ? `<button onclick="clickTile(${c.x}, ${c.y})">Confirm</button>` : "";
+                const button = left > 0 ? `<button onclick="clickTile(${c.x0}, ${c.y0})">Confirm</button>` : "";
                 return `<div class="hold-row">
                     <span class="swatch" style="background:${c.colour}"></span>
-                    <span>(${c.x}, ${c.y})</span>
+                    <span>(${c.x0}, ${c.y0}) · ${(c.x1 - c.x0) * (c.y1 - c.y0)} tiles</span>
                     <span class="time">${time}</span>${button}
                 </div>`;
             }).join("");
@@ -616,9 +630,9 @@
         // Ticks the countdowns, and greys out holds the moment their deadline
         // passes. The tile only clears when the sweep's "released" event lands.
         setInterval(() => {
-            Object.values(claims)
+            liveBlocks()
                 .filter(c => c.status === "held")
-                .forEach(c => updateTile(c.x, c.y));
+                .forEach(c => forEachTile(c, updateTile));
             renderPanels();
         }, 1000);
 
@@ -647,7 +661,8 @@
                         "Content-Type": "application/json",
                         "Authorization": `Bearer ${token}`
                     },
-                    body: JSON.stringify({ x, y, colour: color })
+                    // One tile for now; drag-select sends a wider block next slice.
+                    body: JSON.stringify({ x0: x, y0: y, x1: x + 1, y1: y + 1, colour: color })
                 });
 
                 if (resp.status === 201) {
@@ -675,10 +690,12 @@
 
                 if (resp.ok) {
                     setClaim(await resp.json());
-                    const tile = document.getElementById(`tile-${claim.x}-${claim.y}`);
-                    tile?.classList.add("just");
-                    setTimeout(() => tile?.classList.remove("just"), 500);
-                    showStatus(`🔒 (${claim.x}, ${claim.y}) is yours`, "success");
+                    forEachTile(claim, (x, y) => {
+                        const tile = document.getElementById(`tile-${x}-${y}`);
+                        tile?.classList.add("just");
+                        setTimeout(() => tile?.classList.remove("just"), 500);
+                    });
+                    showStatus(`🔒 (${claim.x0}, ${claim.y0}) is yours`, "success");
                 } else if (resp.status === 409) {
                     showStatus("⌛ Too late, the hold lapsed", "error");
                 } else {

@@ -19,7 +19,9 @@ CLAIMS = "/api/v1/claims/"
 
 
 async def hold_a_tile(client: AsyncClient) -> int:
-    res = await client.post(CLAIMS, json={"x": 4, "y": 7, "colour": "#ff0055"})
+    res = await client.post(
+        CLAIMS, json={"x0": 4, "y0": 7, "x1": 5, "y1": 8, "colour": "#ff0055"}
+    )
     assert res.status_code == 201, res.json()
     return int(res.json()["id"])
 
@@ -122,8 +124,10 @@ async def race(
         before_deadline = await confirming.scalar(select(func.now()))
         assert before_deadline is not None
         claim = Claim(
-            x=4,
-            y=7,
+            x0=4,
+            y0=7,
+            x1=5,
+            y1=8,
             owner="1",
             colour="#ff0055",
             status=HELD,

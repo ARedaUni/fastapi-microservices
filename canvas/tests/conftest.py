@@ -101,8 +101,11 @@ async def connection():
 @pytest.fixture()
 async def session(connection: AsyncConnection):
     # Bound to a connection that already has a transaction, so the session's
-    # own commits become savepoints and the rollback above still undoes them.
-    async with AsyncSession(connection, expire_on_commit=False) as _session:
+    # own commits and rollbacks become savepoints and the rollback above still
+    # undoes them. A handler can roll back and carry on, as it can in production.
+    async with AsyncSession(
+        connection, expire_on_commit=False, join_transaction_mode="create_savepoint"
+    ) as _session:
         yield _session
 
 

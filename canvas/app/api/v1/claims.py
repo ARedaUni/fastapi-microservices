@@ -15,7 +15,7 @@ from app.schemas.claim import ClaimCreate, ClaimRead
 
 router = APIRouter(prefix="/claims", tags=["Claims"])
 
-ONE_LIVE_CLAIM_PER_TILE = "one_live_claim_per_tile"
+NO_OVERLAPPING_LIVE_CLAIMS = "no_overlapping_live_claims"
 
 
 @router.post("/", response_model=ClaimRead, status_code=201)
@@ -25,11 +25,11 @@ async def claim_tile(
     session: AsyncSession = Depends(get_session),
     publisher: Publisher = Depends(get_publisher),
 ) -> ClaimRead:
-    """Take a tile, or lose the race for it.
+    """Hold a block of tiles, all of them or none, or lose the race for it.
 
     No SELECT-then-INSERT. Checking first and inserting second leaves a window
     between the two where the other request wins, and no amount of retrying
-    closes it. The INSERT is the check: the partial unique index decides, in
+    closes it. The INSERT is the check: the exclusion constraint decides, in
     the same transaction that writes the row, and the loser gets 409.
     """
     claim = Claim(
@@ -49,12 +49,22 @@ async def claim_tile(
         # ponytail: string match on the driver's message; asyncpg exposes the
         # constraint name only through the wrapped DBAPI error. Switch to
         # exc.orig.constraint_name if that ever becomes reachable.
-        if ONE_LIVE_CLAIM_PER_TILE not in str(exc.orig):
+        if NO_OVERLAPPING_LIVE_CLAIMS not in str(exc.orig):
             raise
-        raise HTTPException(
-            status_code=409,
-            detail=f"Tile ({payload.x}, {payload.y}) is already claimed",
+        # The decision is made; this read only says what was in the way.
+        in_the_way = await session.scalars(
+            select(Claim).where(
+                Claim.status.in_(LIVE_STATUSES),
+                func.int4range(Claim.x0, Claim.x1).op("&&")(
+                    func.int4range(payload.x0, payload.x1)
+                ),
+                func.int4range(Claim.y0, Claim.y1).op("&&")(
+                    func.int4range(payload.y0, payload.y1)
+                ),
+            )
         )
+        blocks = ", ".join(f"({c.x0}, {c.y0})–({c.x1}, {c.y1})" for c in in_the_way)
+        raise HTTPException(status_code=409, detail=f"Overlaps {blocks}")
     event = ClaimRead.model_validate(claim)
     await publisher.publish_claim_event(event)
     return event
@@ -101,19 +111,21 @@ async def confirm_claim(
         return ClaimRead.model_validate(claim)  # a retry of a confirm that landed
     raise HTTPException(
         status_code=409,
-        detail=f"The hold on ({claim.x}, {claim.y}) has lapsed",
+        detail=f"The hold on ({claim.x0}, {claim.y0}) has lapsed",
     )
 
 
 @router.get("/", response_model=List[ClaimRead])
 async def list_claims(session: AsyncSession = Depends(get_session)):
-    """The canvas as it stands: every tile someone currently owns.
+    """The canvas as it stands: every block someone currently owns.
 
     Unpaginated on purpose -- the grid is bounded, so this cannot return more
     than GRID_SIZE squared rows however popular the canvas gets.
     """
     result = await session.execute(
-        select(Claim).where(Claim.status.in_(LIVE_STATUSES)).order_by(Claim.y, Claim.x)
+        select(Claim)
+        .where(Claim.status.in_(LIVE_STATUSES))
+        .order_by(Claim.y0, Claim.x0)
     )
     return result.scalars().all()
 
