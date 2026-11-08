@@ -620,6 +620,8 @@
             tile.dataset.x = x;
             tile.dataset.y = y;
             tile.id = `tile-${x}-${y}`;
+            // How the journeys find a tile (e2e/); a new UI keeps the label.
+            tile.setAttribute("aria-label", `(${x}, ${y})`);
             paintTile(tile, x, y);
             tile.onmousedown = (e) => { e.preventDefault(); pressTile(x, y); };
             tile.onmouseenter = () => dragTo(x, y);

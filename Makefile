@@ -27,6 +27,11 @@ tests:  ## Run tests
 	@node --test canvas-model.test.js
 
 
+.PHONY: e2e
+e2e:  ## Run the browser journeys for canvas.html against the running stack
+	@npx playwright test
+
+
 .PHONY: contract
 contract:  ## Run the cross-service contract tests against the running stack
 	@echo "🤝 Checking the two services still agree..."

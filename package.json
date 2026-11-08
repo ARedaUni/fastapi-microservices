@@ -1,0 +1,11 @@
+{
+  "name": "canvas-journeys",
+  "private": true,
+  "description": "Browser journeys for canvas.html: the outer test loop.",
+  "scripts": {
+    "e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.0"
+  }
+}
