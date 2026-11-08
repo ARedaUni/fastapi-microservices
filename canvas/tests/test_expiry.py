@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import SessionLocal
 from app.models.claims import HELD, Claim
 from app.worker import release_expired, release_expired_claims
+from tests.conftest import FakeEventBus
 
 
 async def test_arq_can_run_the_job(racing_sessions: None):
@@ -30,7 +31,7 @@ async def test_arq_can_run_the_job(racing_sessions: None):
         )
         await s.commit()
 
-    await release_expired_claims({})
+    await release_expired_claims({"publisher": FakeEventBus()})
 
     async with SessionLocal() as s:
         status = await s.scalar(select(Claim.status).where(Claim.x == 1, Claim.y == 1))
@@ -50,7 +51,7 @@ async def test_an_expired_claim_is_released(session: AsyncSession):
     session.add(claim)
     await session.commit()
 
-    await release_expired(session)
+    await release_expired(session, FakeEventBus())
 
     await session.refresh(claim)
     assert claim.status == "released"
@@ -69,7 +70,7 @@ async def test_an_unexpired_claim_is_left_alone(session: AsyncSession):
     session.add(claim)
     await session.commit()
 
-    await release_expired(session)
+    await release_expired(session, FakeEventBus())
 
     await session.refresh(claim)
     assert claim.status == HELD
@@ -92,7 +93,7 @@ async def test_confirmed_claims_are_not_touched(session: AsyncSession):
     session.add(claim)
     await session.commit()
 
-    await release_expired(session)
+    await release_expired(session, FakeEventBus())
 
     await session.refresh(claim)
     assert claim.status == "confirmed"
@@ -114,8 +115,39 @@ async def test_multiple_expired_claims_are_released(session: AsyncSession):
     session.add_all(claims)
     await session.commit()
 
-    await release_expired(session)
+    await release_expired(session, FakeEventBus())
 
     for claim in claims:
         await session.refresh(claim)
         assert claim.status == "released"
+
+
+async def test_each_released_tile_is_published(
+    session: AsyncSession, fake_events: FakeEventBus
+):
+    """Open tabs clear a tile only if they hear it was released."""
+    session.add_all(
+        [
+            Claim(
+                x=4,
+                y=7,
+                owner="ada",
+                colour="#ff0055",
+                status=HELD,
+                expires_at=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            ),
+            Claim(
+                x=5,
+                y=8,
+                owner="bob",
+                colour="#0055ff",
+                status=HELD,
+                expires_at=datetime(2099, 12, 31, tzinfo=timezone.utc),
+            ),
+        ]
+    )
+    await session.commit()
+
+    await release_expired(session, fake_events)
+
+    assert [(e.x, e.y, e.status) for e in fake_events.published] == [(4, 7, "released")]
