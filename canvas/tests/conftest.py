@@ -1,5 +1,6 @@
+import asyncio
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List
+from typing import Any, AsyncIterator, Dict, List
 
 import jwt
 import pytest
@@ -10,12 +11,13 @@ from jwt.algorithms import RSAAlgorithm
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
-from app.api.deps import get_session
+from app.api.deps import get_publisher, get_session, get_subscriber
 from app.core import security
 from app.core.config import settings
 from app.core.database import SessionLocal, engine
 from app.main import app
 from app.models.claims import Claim
+from app.schemas.claim import ClaimRead
 
 # A key users never signed anything with, standing in for the one it did.
 # canvas cannot tell the difference, which is the property being relied on.
@@ -99,14 +101,51 @@ async def connection():
 @pytest.fixture()
 async def session(connection: AsyncConnection):
     # Bound to a connection that already has a transaction, so the session's
-    # own commits become savepoints and the rollback above still undoes them.
-    async with AsyncSession(connection, expire_on_commit=False) as _session:
+    # own commits and rollbacks become savepoints and the rollback above still
+    # undoes them. A handler can roll back and carry on, as it can in production.
+    async with AsyncSession(
+        connection, expire_on_commit=False, join_transaction_mode="create_savepoint"
+    ) as _session:
         yield _session
 
 
 @pytest.fixture(autouse=True)
 async def override_dependency(session: AsyncSession):
     app.dependency_overrides[get_session] = lambda: session
+
+
+class FakeEventBus:
+    """In-memory stand-in for RedisPublisher -- the fake the decision doc
+    describes, so tests never stand up real Redis to prove claim_tile
+    publishes.
+
+    Round-trips through the same asyncio.Queue a real subscribe() drains, so a
+    test can hit the API and then read back what a live SSE client would have
+    seen, not just that publish_claim_event was called.
+    """
+
+    def __init__(self) -> None:
+        self.published: List[ClaimRead] = []
+        self._queue: "asyncio.Queue[str]" = asyncio.Queue()
+
+    async def publish_claim_event(self, event: ClaimRead) -> None:
+        self.published.append(event)
+        await self._queue.put(event.model_dump_json())
+
+    async def subscribe(self) -> AsyncIterator[str]:
+        while True:
+            yield await self._queue.get()
+
+
+@pytest.fixture()
+def fake_events() -> FakeEventBus:
+    return FakeEventBus()
+
+
+@pytest.fixture(autouse=True)
+def override_events(fake_events: FakeEventBus) -> None:
+    app.dependency_overrides[get_publisher] = lambda: fake_events
+    app.dependency_overrides[get_subscriber] = lambda: fake_events
 
 
 @pytest.fixture()

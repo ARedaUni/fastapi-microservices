@@ -11,7 +11,7 @@ from app.core import security
 from tests.conftest import JWKS, auth
 
 CLAIMS = "/api/v1/claims/"
-TILE = {"x": 4, "y": 7, "colour": "#ff0055"}
+TILE = {"x0": 4, "y0": 7, "x1": 5, "y1": 8, "colour": "#ff0055"}
 
 
 async def test_a_claim_without_a_token_is_unauthorized(anonymous: AsyncClient):

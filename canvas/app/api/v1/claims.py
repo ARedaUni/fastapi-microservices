@@ -1,18 +1,21 @@
 from datetime import datetime, timedelta, timezone
-from typing import List
+from typing import AsyncIterator, List
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import current_subject, get_session
-from app.models.claims import HELD, HOLD_MINUTES, LIVE_STATUSES, Claim
+from app.api.deps import current_subject, get_publisher, get_session, get_subscriber
+from app.models.claims import CONFIRMED, HELD, HOLD_MINUTES, LIVE_STATUSES, Claim
+from app.ports.publisher import Publisher
+from app.ports.subscriber import Subscriber
 from app.schemas.claim import ClaimCreate, ClaimRead
 
 router = APIRouter(prefix="/claims", tags=["Claims"])
 
-ONE_LIVE_CLAIM_PER_TILE = "one_live_claim_per_tile"
+NO_OVERLAPPING_LIVE_CLAIMS = "no_overlapping_live_claims"
 
 
 @router.post("/", response_model=ClaimRead, status_code=201)
@@ -20,12 +23,13 @@ async def claim_tile(
     payload: ClaimCreate,
     owner: str = Depends(current_subject),
     session: AsyncSession = Depends(get_session),
-) -> Claim:
-    """Take a tile, or lose the race for it.
+    publisher: Publisher = Depends(get_publisher),
+) -> ClaimRead:
+    """Hold a block of tiles, all of them or none, or lose the race for it.
 
     No SELECT-then-INSERT. Checking first and inserting second leaves a window
     between the two where the other request wins, and no amount of retrying
-    closes it. The INSERT is the check: the partial unique index decides, in
+    closes it. The INSERT is the check: the exclusion constraint decides, in
     the same transaction that writes the row, and the loser gets 409.
     """
     claim = Claim(
@@ -45,23 +49,104 @@ async def claim_tile(
         # ponytail: string match on the driver's message; asyncpg exposes the
         # constraint name only through the wrapped DBAPI error. Switch to
         # exc.orig.constraint_name if that ever becomes reachable.
-        if ONE_LIVE_CLAIM_PER_TILE not in str(exc.orig):
+        if NO_OVERLAPPING_LIVE_CLAIMS not in str(exc.orig):
             raise
-        raise HTTPException(
-            status_code=409,
-            detail=f"Tile ({payload.x}, {payload.y}) is already claimed",
+        # The decision is made; this read only says what was in the way.
+        in_the_way = await session.scalars(
+            select(Claim).where(
+                Claim.status.in_(LIVE_STATUSES),
+                func.int4range(Claim.x0, Claim.x1).op("&&")(
+                    func.int4range(payload.x0, payload.x1)
+                ),
+                func.int4range(Claim.y0, Claim.y1).op("&&")(
+                    func.int4range(payload.y0, payload.y1)
+                ),
+            )
         )
-    return claim
+        blocks = ", ".join(f"({c.x0}, {c.y0})–({c.x1}, {c.y1})" for c in in_the_way)
+        raise HTTPException(status_code=409, detail=f"Overlaps {blocks}")
+    event = ClaimRead.model_validate(claim)
+    await publisher.publish_claim_event(event)
+    return event
+
+
+@router.post("/{claim_id}/confirm", response_model=ClaimRead)
+async def confirm_claim(
+    claim_id: int,
+    owner: str = Depends(current_subject),
+    session: AsyncSession = Depends(get_session),
+    publisher: Publisher = Depends(get_publisher),
+) -> ClaimRead:
+    """Keep a held tile, if its deadline hasn't passed.
+
+    The UPDATE is the check, same as claim_tile's INSERT. Postgres re-checks
+    the WHERE on the row it locks, so a sweep releasing this claim at the same
+    instant and this confirm cannot both win. Postgres's clock, not this
+    process's, so the worker and every API replica judge one deadline.
+    """
+    confirmed = await session.scalar(
+        update(Claim)
+        .where(
+            Claim.id == claim_id,
+            Claim.owner == owner,
+            Claim.status == HELD,
+            Claim.expires_at > func.now(),
+        )
+        .values(status=CONFIRMED)
+        .returning(Claim)
+    )
+    await session.commit()
+    if confirmed is not None:
+        event = ClaimRead.model_validate(confirmed)
+        await publisher.publish_claim_event(event)
+        return event
+
+    # Nothing matched. The decision is already made; this read only explains it.
+    claim = await session.get(Claim, claim_id, populate_existing=True)
+    if claim is None:
+        raise HTTPException(status_code=404, detail="No such claim")
+    if claim.owner != owner:
+        raise HTTPException(status_code=403, detail="Not your claim")
+    if claim.status == CONFIRMED:
+        return ClaimRead.model_validate(claim)  # a retry of a confirm that landed
+    raise HTTPException(
+        status_code=409,
+        detail=f"The hold on ({claim.x0}, {claim.y0}) has lapsed",
+    )
 
 
 @router.get("/", response_model=List[ClaimRead])
 async def list_claims(session: AsyncSession = Depends(get_session)):
-    """The canvas as it stands: every tile someone currently owns.
+    """The canvas as it stands: every block someone currently owns.
 
     Unpaginated on purpose -- the grid is bounded, so this cannot return more
     than GRID_SIZE squared rows however popular the canvas gets.
     """
     result = await session.execute(
-        select(Claim).where(Claim.status.in_(LIVE_STATUSES)).order_by(Claim.y, Claim.x)
+        select(Claim)
+        .where(Claim.status.in_(LIVE_STATUSES))
+        .order_by(Claim.y0, Claim.x0)
     )
     return result.scalars().all()
+
+
+@router.get("/stream")
+async def stream_claims(
+    request: Request, subscriber: Subscriber = Depends(get_subscriber)
+) -> StreamingResponse:
+    """Every claim, as it happens, to whoever is watching.
+
+    Unauthenticated, same as `list_claims`: the canvas is the public artefact,
+    and this is that same read replayed live rather than polled. No
+    `Last-Event-ID` replay either -- a reconnecting client re-fetches
+    `GET /claims` for ground truth, then resubscribes here for the tail; see
+    docs/second-service.md §3 for why that beats a second recovery mechanism.
+    """
+
+    async def event_source() -> AsyncIterator[str]:
+        async for payload in subscriber.subscribe():
+            if await request.is_disconnected():
+                break
+            yield f"data: {payload}\n\n"
+
+    return StreamingResponse(event_source(), media_type="text/event-stream")

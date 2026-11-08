@@ -31,11 +31,8 @@ def a_free_tile() -> Dict[str, Any]:
     collision likely and these tests start flaking on 409. Stage 3, or a reset
     hook on canvas, is the fix -- not a retry loop here.
     """
-    return {
-        "x": random.randrange(GRID_SIZE),
-        "y": random.randrange(GRID_SIZE),
-        "colour": "#ff8800",
-    }
+    x, y = random.randrange(GRID_SIZE), random.randrange(GRID_SIZE)
+    return {"x0": x, "y0": y, "x1": x + 1, "y1": y + 1, "colour": "#ff8800"}
 
 
 def issuer_of(token: str) -> str:

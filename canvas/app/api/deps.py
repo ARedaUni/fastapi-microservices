@@ -5,8 +5,11 @@ from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt.exceptions import PyJWKClientConnectionError
 
+from app.adapters.redis_publisher import get_instance as get_redis_publisher
 from app.core.database import SessionLocal
 from app.core.security import subject_of
+from app.ports.publisher import Publisher
+from app.ports.subscriber import Subscriber
 
 # HTTPBearer, not OAuth2PasswordBearer: there is no login endpoint here to
 # point a tokenUrl at. auto_error=False so a missing token is 401 rather than
@@ -17,6 +20,14 @@ bearer = HTTPBearer(auto_error=False)
 async def get_session():
     async with SessionLocal() as session:
         yield session
+
+
+def get_publisher() -> Publisher:
+    return get_redis_publisher()
+
+
+def get_subscriber() -> Subscriber:
+    return get_redis_publisher()
 
 
 async def current_subject(
