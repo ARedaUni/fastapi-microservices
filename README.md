@@ -47,18 +47,8 @@ rebuild. Change `users/requirements.txt` and you need `make up` again.
 
 ### Endpoints
 
-Every route the template ships, and who may call it:
-
-| Method | Path | Access |
-|---|---|---|
-| `POST` | `/api/v1/login/` | Public; optional `audience` names the one service the token is for (default `users`) |
-| `GET` | `/api/v1/users/` | Superuser |
-| `POST` | `/api/v1/users/` | Superuser |
-| `GET` | `/api/v1/users/{user_id}/` | Self, or superuser for anyone else |
-| `PUT` | `/api/v1/users/{user_id}/` | Superuser |
-| `DELETE` | `/api/v1/users/{user_id}/` | Superuser, and never itself |
-| `GET` | `/api/health/` | Public; `204` healthy, `503` when Postgres doesn't answer in 1s |
-| `GET` | `/.well-known/jwks.json` | Public by design — the public keys other services verify with |
+<http://localhost:8000/api/docs> lists every route, generated from the code, so
+it cannot drift. Who may call each one is tested in `users/tests/test_authz.py`.
 
 ## Layout
 
@@ -148,7 +138,7 @@ Honest limits. Each one is a decision the template defers to you, not a bug:
   service name the client asks for, with no per-service policy ("only admins
   get `payments` tokens"). Add an allowlist to `login` the day one service
   needs to be harder to reach than another.
-- **No refresh tokens, no revocation, no sessions.** A token is live until
+- **No refresh tokens, no revocation, no sessions, no MFA.** A token is live until
   `exp`; shortening `ACCESS_TOKEN_EXPIRE_MINUTES` is the only lever. Rotating
   the signing key invalidates every outstanding token at once, which is a
   blunt instrument, not a revocation list.

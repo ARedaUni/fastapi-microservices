@@ -212,8 +212,8 @@ none of it, and costs a black box in the middle of the one thing being studied.
 Row 1 is what the repo does today. Row 2 is about forty lines in `users/` and
 thirty in `canvas`.
 
-What row 2 does **not** buy, stated plainly: no refresh tokens, no revocation,
-no MFA, and a login ceremony that is still a password.
+What row 2 does **not** buy is listed once, in
+[Before you deploy](../README.md#before-you-deploy).
 
 `aud` is narrow: a client logs in with `audience=canvas` and gets a token
 `canvas` accepts and `users` refuses, so handing your token to `canvas` no
@@ -345,8 +345,8 @@ pain is the teaching, and stage 4 is what supplied it for the last row.
   saying so out loud is part of understanding microservices.
 - **`payments` is a fake.** It should be. Do not wire a real gateway into a
   system whose purpose is to be broken on purpose.
-- **The template's open ends still apply.** Passwords have no policy, and there
-  are no refresh tokens or revocation. Copying `users/` copies both; see [Before you deploy](../README.md#before-you-deploy).
+- **The template's open ends still apply.** Copying `users/` copies every one
+  of them; see [Before you deploy](../README.md#before-you-deploy).
 
 ## What would change the recommendation
 
