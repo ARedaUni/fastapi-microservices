@@ -29,6 +29,9 @@ curl -X POST http://localhost:8000/api/v1/login/ \
   -d 'username=admin@admin.com&password=password'
 ```
 
+That token is good at `users` only. Add `&audience=canvas` for one that
+`canvas` accepts, and that `users` then refuses.
+
 `users/app` and `users/tests` are bind-mounted, so edits reload without a
 rebuild. Change `users/requirements.txt` and you need `make up` again.
 
@@ -50,7 +53,7 @@ Every route the template ships, and who may call it:
 
 | Method | Path | Access |
 |---|---|---|
-| `POST` | `/api/v1/login/` | Public |
+| `POST` | `/api/v1/login/` | Public; optional `audience` names the one service the token is for (default `users`) |
 | `GET` | `/api/v1/home/` | Any authenticated user |
 | `GET` | `/api/v1/home/another/` | Public — the deliberate counterexample |
 | `GET` | `/api/v1/users/` | Superuser |
@@ -133,12 +136,9 @@ load/                   locust scenarios; `make load`, never started by `make up
    not `models/users.py`, `crud/` or a signing key. Verifying a JWT takes a
    published public key, not the user table, and a service that reaches into
    another's tables is not a second service.
-5. **Add it to the token's audience.** `AUDIENCES` in
-   `users/app/core/security.py`, and the new service pins its own name. A
-   constant rather than config, because widening who may accept a token is a
-   trust decision — and note that every name on that list goes into every
-   token, so adding one widens what a stolen token reaches. See
-   [Before you deploy](#before-you-deploy).
+5. **Pin its own name as the audience.** Clients log in with
+   `audience=<name>` and get a token only that service accepts. `users`
+   needs no change: it keeps no list of services.
 
 The two share a Postgres *server* and Redis, and no data. Crossing a process
 boundary should stay a deliberate act.
@@ -155,13 +155,10 @@ Honest limits. Each one is a decision the template defers to you, not a bug:
   one is accepted. Add a `Field(min_length=...)` that matches your rules.
 - **The checked-in secrets are examples.** `.env.example` and the `Secret` in
   `k8s/users.yaml` carry public values. Both say so; replace all of them.
-- **A token is accepted by every service, not just the one you handed it to.**
-  `AUDIENCES` puts every service name in every token's `aud`, so the credential
-  `canvas` receives also works against `users`, including its superuser routes.
-  Each service does pin its own name — the mechanism is there and tested — but
-  nothing issues a narrowed token, so there is no way to hand `canvas` a token
-  that is useless anywhere else. Give login a `resource` parameter (RFC 8707)
-  and mint `aud` from it before a second service handles anything sensitive.
+- **Any shape-valid audience is granted.** Login mints a token for whatever
+  service name the client asks for, with no per-service policy ("only admins
+  get `payments` tokens"). Add an allowlist to `login` the day one service
+  needs to be harder to reach than another.
 - **No refresh tokens, no revocation, no sessions.** A token is live until
   `exp`; shortening `ACCESS_TOKEN_EXPIRE_MINUTES` is the only lever. Rotating
   the signing key invalidates every outstanding token at once, which is a

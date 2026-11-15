@@ -12,10 +12,10 @@ from app.core.keys import ALGORITHM, load_private_key, public_jwk
 from app.crud.users import crud_user
 from app.models.users import User
 
-# Who may accept a token this service signs. A constant, not a setting:
-# widening it is a trust decision, not a deployment knob.
-AUDIENCES = ["users", "canvas"]
-AUDIENCE = "users"  # this service's own name, pinned when verifying
+# This service's own name: pinned when verifying, and the `aud` of a token
+# nobody asked to send elsewhere. Other services are named by the client at
+# login, so this one never lists them.
+AUDIENCE = "users"
 
 PRIVATE_KEY = load_private_key(settings.JWT_PRIVATE_KEY.get_secret_value())
 PUBLIC_KEY = PRIVATE_KEY.public_key()
@@ -31,7 +31,7 @@ def _bcrypt_bytes(password: str) -> bytes:
     return password.encode()[:BCRYPT_MAX_BYTES]
 
 
-def create_access_token(user: User) -> str:
+def create_access_token(user: User, audience: str = AUDIENCE) -> str:
     # Registered claim names (RFC 7519 4.1), not a bespoke user_id: a verifier
     # written by someone else already validates iss/aud/exp for free. `kid`
     # names the signing key, which is what lets two be live during a rotation.
@@ -40,7 +40,7 @@ def create_access_token(user: User) -> str:
         {
             "iss": settings.JWT_ISSUER,
             "sub": str(user.id),
-            "aud": AUDIENCES,
+            "aud": audience,
             "iat": now,
             "exp": now + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
         },

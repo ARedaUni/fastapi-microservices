@@ -12,12 +12,12 @@ import pytest
 from httpx import AsyncClient
 
 from app.core.config import settings
-from app.core.security import ALGORITHM, AUDIENCES, PRIVATE_KEY, PUBLIC_JWK
+from app.core.security import ALGORITHM, AUDIENCE, PRIVATE_KEY, PUBLIC_JWK
 
 
 def _encode(payload: Dict) -> str:
     return jwt.encode(
-        {"iss": settings.JWT_ISSUER, "aud": AUDIENCES, **payload},
+        {"iss": settings.JWT_ISSUER, "aud": AUDIENCE, **payload},
         key=PRIVATE_KEY,
         algorithm=ALGORITHM,
         headers={"kid": PUBLIC_JWK["kid"]},

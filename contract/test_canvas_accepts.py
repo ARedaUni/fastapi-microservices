@@ -1,13 +1,9 @@
 """Terms 5-6: what `canvas` does with a token it did not sign.
 
-What this suite cannot prove, and why: audience isolation -- that a token
-minted only for `users` is refused by `canvas` -- needs a token signed by the
-real private key with a narrowed `aud`, and nothing outside `users` can mint
-one. From here every forgery fails on the signature first, so the audience
-check is never reached. That assertion belongs in `canvas/tests`, where the
-signing key is under the test's control. A contract test can pin the wire
-format and the rejections an outsider can actually trigger; it cannot stand in
-for a service's own enforcement matrix.
+A contract test can pin the wire format and the rejections an outsider can
+actually trigger; it cannot stand in for a service's own enforcement matrix,
+which lives in `canvas/tests` where the signing key is under the test's
+control.
 """
 
 import random
@@ -15,7 +11,15 @@ from typing import Any, Dict
 
 import httpx
 import jwt
-from conftest import ALGORITHM, CANVAS_AUDIENCE, bearer, mint, signing_key
+from conftest import (
+    ALGORITHM,
+    CANVAS_AUDIENCE,
+    EMAIL,
+    PASSWORD,
+    bearer,
+    mint,
+    signing_key,
+)
 
 # canvas' grid is 100x100. Hardcoded rather than imported: importing
 # `app.models.claims.GRID_SIZE` would be a dependency on the implementation,
@@ -52,6 +56,22 @@ def subject_of(token: str, jwks: Dict[str, Any]) -> str:
 
 def test_a_claim_without_a_token_is_unauthorized(canvas: httpx.Client) -> None:
     res = canvas.post("/api/v1/claims/", json=a_free_tile())
+
+    assert res.status_code == 401, res.text
+
+
+def test_a_genuine_token_for_users_alone_is_unauthorized(
+    users: httpx.Client, canvas: httpx.Client
+) -> None:
+    """Really signed, really ours -- and still no pass into canvas, because the
+    client did not ask for one."""
+    login = users.post("/api/v1/login/", data={"username": EMAIL, "password": PASSWORD})
+
+    res = canvas.post(
+        "/api/v1/claims/",
+        json=a_free_tile(),
+        headers=bearer(login.json()["access_token"]),
+    )
 
     assert res.status_code == 401, res.text
 

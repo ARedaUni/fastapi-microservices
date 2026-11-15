@@ -6,7 +6,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from httpx import AsyncClient
 
 from app.core.config import settings
-from app.core.security import ALGORITHM, AUDIENCES, PRIVATE_KEY, PUBLIC_JWK
+from app.core.security import ALGORITHM, AUDIENCE, PRIVATE_KEY, PUBLIC_JWK
 
 PRIVATE_JWK_MEMBERS = {"d", "p", "q", "dp", "dq", "qi", "oth"}
 
@@ -16,7 +16,7 @@ def _claims(**overrides):
     return {
         "iss": settings.JWT_ISSUER,
         "sub": "1",
-        "aud": AUDIENCES,
+        "aud": AUDIENCE,
         "iat": now,
         "exp": now + timedelta(minutes=5),
         **overrides,

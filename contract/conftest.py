@@ -65,8 +65,11 @@ def canvas():
 
 @pytest.fixture(scope="session")
 def access_token(users: httpx.Client) -> str:
-    """A token, obtained the only way a client can: by logging in."""
-    res = users.post("/api/v1/login/", data={"username": EMAIL, "password": PASSWORD})
+    """A token for canvas, obtained the only way a client can: by logging in."""
+    res = users.post(
+        "/api/v1/login/",
+        data={"username": EMAIL, "password": PASSWORD, "audience": CANVAS_AUDIENCE},
+    )
     assert res.status_code == 200, res.text
     return res.json()["access_token"]
 

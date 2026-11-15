@@ -4,7 +4,7 @@
 echo "Getting token from users service..."
 RESPONSE=$(curl -s -X POST "http://localhost:8000/api/v1/login/" \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "username=admin@admin.com&password=password")
+  -d "username=admin@admin.com&password=password&audience=canvas")
 
 TOKEN=$(echo $RESPONSE | jq -r '.access_token')
 OWNER="1"  # sub claim from the JWT

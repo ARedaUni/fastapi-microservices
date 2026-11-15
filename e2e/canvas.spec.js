@@ -7,7 +7,7 @@ const PAGE = "file://" + path.resolve(__dirname, "../canvas.html");
 
 async function logIn(page, request) {
     const res = await request.post(`${USERS_API}/api/v1/login/`, {
-        form: { username: "admin@admin.com", password: "password" },
+        form: { username: "admin@admin.com", password: "password", audience: "canvas" },
     });
     const { access_token: token } = await res.json();
     const sub = JSON.parse(Buffer.from(token.split(".")[1], "base64url")).sub;

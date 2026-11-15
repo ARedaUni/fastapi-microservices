@@ -15,7 +15,6 @@ from conftest import (
     JWKS_PATH,
     PASSWORD,
     PRIVATE_JWK_MEMBERS,
-    USERS_AUDIENCE,
     signing_key,
 )
 
@@ -80,14 +79,14 @@ def test_the_access_token_is_signed_by_a_published_key(
     assert payload["sub"]
 
 
-def test_the_access_token_names_its_issuer_and_its_audiences(
+def test_the_access_token_names_its_issuer_and_the_audience_asked_for(
     access_token: str, jwks: Dict[str, Any]
 ) -> None:
     """Term 4. `iss` says who signed; `aud` says who may accept.
 
     Without `aud`, a token handed to one service can be replayed by that
-    service against another, as the user -- the confused deputy. Each service
-    checks its own name is in this list.
+    service against another, as the user -- the confused deputy. So it names
+    the one service the client asked for, and no other.
     """
     header = jwt.get_unverified_header(access_token)
     payload = jwt.decode(
@@ -98,6 +97,5 @@ def test_the_access_token_names_its_issuer_and_its_audiences(
     )
 
     assert payload["iss"], "a token that does not say who signed it cannot be pinned"
-    assert USERS_AUDIENCE in payload["aud"]
-    assert CANVAS_AUDIENCE in payload["aud"]
+    assert payload["aud"] == CANVAS_AUDIENCE
     assert payload["exp"] > payload["iat"], "expiry is the only revocation there is"

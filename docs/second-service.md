@@ -215,14 +215,12 @@ thirty in `canvas`.
 What row 2 does **not** buy, stated plainly: no refresh tokens, no revocation,
 no MFA, and a login ceremony that is still a password.
 
-Nor, yet, a *narrow* `aud`. `AUDIENCES` puts every service name in every token,
-so the token `canvas` receives is also accepted by `users`. The check is real —
-each service pins its own name, and `canvas/tests/test_auth.py` proves a token
-minted only for `users` is refused — but nothing mints one. What is missing is
-a way for a client to ask for a token good at one service only; until then,
-handing your token to `canvas` hands it your `users` access too. Acceptable
-here, unacceptable in production — see
-[Before you deploy](../README.md#before-you-deploy).
+`aud` is narrow: a client logs in with `audience=canvas` and gets a token
+`canvas` accepts and `users` refuses, so handing your token to `canvas` no
+longer hands it your `users` access. `users` keeps no list of services, which
+is also what lets a third one arrive without redeploying it. The contract suite
+proves the refusal across the wire, in
+`test_a_genuine_token_for_users_alone_is_unauthorized`.
 
 The escape hatch is the point, not a consolation. `canvas` only ever learns an
 issuer URL and a JWKS URL, so row 3 stays available: point it at Hanko or
