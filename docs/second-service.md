@@ -20,7 +20,7 @@ _rate-limited per person_, not just exclusive. Both are covered below.
 
 Copy `users/` to `orders/`, give it its own database, wire it into
 `docker-compose.yml` and the `Tiltfile`, and you have learned one thing: how
-to copy a directory. Alembic, arq, the three Dockerfile targets and the
+to copy a directory. Alembic, the Dockerfile targets and the
 health probe are all already familiar. Two isolated CRUD apps that happen to
 trust the same JWT are not a distributed system; they are one system deployed
 twice.
@@ -345,9 +345,8 @@ pain is the teaching, and stage 4 is what supplied it for the last row.
   saying so out loud is part of understanding microservices.
 - **`payments` is a fake.** It should be. Do not wire a real gateway into a
   system whose purpose is to be broken on purpose.
-- **The template's open ends still apply.** `/api/v1/tasks/` is unauthenticated,
-  passwords have no policy, and the health probe only checks Postgres. Copying
-  `users/` copies all three; see [Before you deploy](../README.md#before-you-deploy).
+- **The template's open ends still apply.** Passwords have no policy, and there
+  are no refresh tokens or revocation. Copying `users/` copies both; see [Before you deploy](../README.md#before-you-deploy).
 
 ## What would change the recommendation
 

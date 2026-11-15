@@ -48,7 +48,7 @@ async def test_a_token_signed_by_an_unpublished_key_is_rejected(client: AsyncCli
     )
 
     res = await client.get(
-        "/api/v1/home/", headers={"Authorization": f"Bearer {forged}"}
+        "/api/v1/users/1/", headers={"Authorization": f"Bearer {forged}"}
     )
 
     assert res.status_code == 403
@@ -70,7 +70,7 @@ async def test_a_token_minted_only_for_canvas_is_rejected(client: AsyncClient):
     )
 
     res = await client.get(
-        "/api/v1/home/", headers={"Authorization": f"Bearer {elsewhere}"}
+        "/api/v1/users/1/", headers={"Authorization": f"Bearer {elsewhere}"}
     )
 
     assert res.status_code == 403
@@ -86,7 +86,7 @@ async def test_a_token_from_another_issuer_is_rejected(client: AsyncClient):
     )
 
     res = await client.get(
-        "/api/v1/home/", headers={"Authorization": f"Bearer {impostor}"}
+        "/api/v1/users/1/", headers={"Authorization": f"Bearer {impostor}"}
     )
 
     assert res.status_code == 403

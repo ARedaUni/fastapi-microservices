@@ -45,14 +45,14 @@ async def test_login_with_unknown_email_is_rejected(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_protected_route_without_a_token_is_unauthorized(client: AsyncClient):
-    res = await client.get("/api/v1/home/")
+    res = await client.get("/api/v1/users/1/")
     assert res.status_code == 401
 
 
 @pytest.mark.asyncio
 async def test_protected_route_with_a_malformed_token_is_forbidden(client: AsyncClient):
     res = await client.get(
-        "/api/v1/home/", headers={"Authorization": "Bearer not-a-jwt"}
+        "/api/v1/users/1/", headers={"Authorization": "Bearer not-a-jwt"}
     )
     assert res.status_code == 403
 
@@ -61,7 +61,7 @@ async def test_protected_route_with_a_malformed_token_is_forbidden(client: Async
 async def test_protected_route_with_an_expired_token_is_forbidden(client: AsyncClient):
     expired = _encode({"exp": datetime(2020, 1, 1, tzinfo=timezone.utc), "sub": "1"})
     res = await client.get(
-        "/api/v1/home/", headers={"Authorization": f"Bearer {expired}"}
+        "/api/v1/users/1/", headers={"Authorization": f"Bearer {expired}"}
     )
     assert res.status_code == 403
 
@@ -75,13 +75,6 @@ async def test_token_for_a_deleted_user_is_not_found(client: AsyncClient):
         "/api/v1/users/999999/", headers={"Authorization": f"Bearer {orphan}"}
     )
     assert res.status_code == 404
-
-
-@pytest.mark.asyncio
-async def test_home_another_is_deliberately_public(client: AsyncClient):
-    """Demo surface: unlike /home/, this route carries no auth dependency."""
-    res = await client.get("/api/v1/home/another/")
-    assert res.status_code == 200
 
 
 @pytest.mark.asyncio
@@ -148,7 +141,7 @@ async def test_an_inactive_user_cannot_use_a_valid_token(
         headers=superuser_token_headers,
     )
     assert deactivate.status_code == 200, deactivate.json()
-    # /home/ only decodes the token; the active check lives in get_current_user.
+    # Decoding passes; the active check lives in get_current_user.
     res = await client.get(
         f"/api/v1/users/{normal_user['id']}/", headers=normal_user_token_headers
     )

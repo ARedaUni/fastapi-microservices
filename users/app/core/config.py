@@ -59,9 +59,6 @@ class Settings(BaseSettings):
         load_private_key(v.get_secret_value())
         return v
 
-    # REDIS_HOST and REDIS_PORT live in app.core.redis.RedisConfig, which the
-    # worker imports without this class and everything it requires.
-
 
 # pydantic-settings populates every field from the environment, but mypy sees a
 # no-argument call against a model whose fields are required and reports one

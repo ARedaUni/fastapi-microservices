@@ -1,5 +1,4 @@
-# One image, three tails: the API, the arq worker, and a dev variant that also
-# carries the test and lint tooling. `prod` is last so an untargeted build gets
+# One image, two tails: the API, and a dev variant that also carries the test and lint tooling. `prod` is last so an untargeted build gets
 # the lean image.
 FROM python:3.13-slim AS base
 
@@ -18,10 +17,6 @@ COPY ./alembic.ini /app/alembic.ini
 COPY ./scripts /app/scripts
 COPY ./migrations /app/migrations
 COPY ./app /app/app
-
-
-FROM base AS worker
-CMD ["arq", "app.worker.WorkerSettings"]
 
 
 FROM base AS dev

@@ -82,10 +82,6 @@ spec:
           command:
             ["sh", "-c", "alembic upgrade head && python scripts/initial_data.py"]
           env:
-            - name: REDIS_HOST
-              value: "redis-service"
-            - name: REDIS_PORT
-              value: "6379"
             - name: POSTGRES_HOST
               value: "postgres-service"
             - name: POSTGRES_PASSWORD
@@ -125,10 +121,6 @@ spec:
               path: /api/health/
               port: 80
           env:
-            - name: REDIS_HOST
-              value: "redis-service"
-            - name: REDIS_PORT
-              value: "6379"
             - name: POSTGRES_HOST
               value: "postgres-service"
             - name: POSTGRES_PASSWORD

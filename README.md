@@ -2,8 +2,7 @@
 
 [![CI](https://github.com/ARedaUni/fastapi-microservices/actions/workflows/ci.yaml/badge.svg)](https://github.com/ARedaUni/fastapi-microservices/actions/workflows/ci.yaml)
 
-A template for a fully async FastAPI service — Postgres, a background worker,
-JWT auth and Kubernetes manifests already wired together, so you start from a
+A template for a fully async FastAPI service — Postgres, JWT auth and Kubernetes manifests already wired together, so you start from a
 running stack instead of an empty `main.py`.
 
 Clone it, rename the service, delete what you don't need.
@@ -17,7 +16,7 @@ cp .env.example .env
 make up
 ```
 
-That brings up Postgres, Redis, the API and the arq worker, runs the migrations
+That brings up Postgres, Redis, both services and `canvas`' worker, runs the migrations
 and seeds the first superuser. The API is on <http://localhost:8000>, the
 interactive docs on <http://localhost:8000/api/docs>.
 
@@ -42,7 +41,6 @@ rebuild. Change `users/requirements.txt` and you need `make up` again.
 | [FastAPI](https://fastapi.tiangolo.com/) | The API, on Python 3.13, async top to bottom |
 | [SQLAlchemy 2.0](https://docs.sqlalchemy.org/) + [asyncpg](https://magicstack.github.io/asyncpg/) | Postgres access through the async engine |
 | [Alembic](https://alembic.sqlalchemy.org/) | Schema migrations, run as their own release-phase step |
-| [arq](https://arq-docs.helpmanual.io/) + [Redis](https://redis.io/) | Background jobs, in a worker that shares the image but not the config |
 | [PyJWT](https://pyjwt.readthedocs.io/) + [bcrypt](https://github.com/pyca/bcrypt) | Token auth and password hashing, off the event loop |
 | [pytest](https://docs.pytest.org/) + [ruff](https://docs.astral.sh/ruff/) + [mypy](https://mypy.readthedocs.io/) | The gates CI runs, all reproducible with `make` |
 | [Tilt](https://tilt.dev/) | The Kubernetes dev loop, for when Compose isn't enough |
@@ -54,15 +52,11 @@ Every route the template ships, and who may call it:
 | Method | Path | Access |
 |---|---|---|
 | `POST` | `/api/v1/login/` | Public; optional `audience` names the one service the token is for (default `users`) |
-| `GET` | `/api/v1/home/` | Any authenticated user |
-| `GET` | `/api/v1/home/another/` | Public — the deliberate counterexample |
 | `GET` | `/api/v1/users/` | Superuser |
 | `POST` | `/api/v1/users/` | Superuser |
 | `GET` | `/api/v1/users/{user_id}/` | Self, or superuser for anyone else |
 | `PUT` | `/api/v1/users/{user_id}/` | Superuser |
 | `DELETE` | `/api/v1/users/{user_id}/` | Superuser, and never itself |
-| `POST` | `/api/v1/tasks/` | **Public** — see [Before you deploy](#before-you-deploy) |
-| `GET` | `/api/v1/tasks/{task_id}/` | **Public** — see [Before you deploy](#before-you-deploy) |
 | `GET` | `/api/health/` | Public; `204` healthy, `503` when Postgres doesn't answer in 1s |
 | `GET` | `/.well-known/jwks.json` | Public by design — the public keys other services verify with |
 
@@ -72,15 +66,14 @@ Every route the template ships, and who may call it:
 users/                  one service; the plural name is the invitation to add more
 ├── app/
 │   ├── api/            routers, split by version, plus the health probe
-│   ├── core/           config, database engine, redis, security
+│   ├── core/           config, database engine, keys, security
 │   ├── crud/           the generic async repository and its User binding
 │   ├── models/         SQLAlchemy models
 │   ├── schemas/        Pydantic request and response models
-│   ├── main.py         app factory and lifespan
-│   └── worker.py       arq WorkerSettings
+│   └── main.py         app factory
 ├── migrations/         alembic, one revision to start from
 ├── tests/
-└── Dockerfile          one image, three targets: prod, worker, dev
+└── Dockerfile          one image, two targets: prod, dev
 k8s/                    manifests, one file per service
 scripts/                init-databases.sql -- one database per service
 load/                   locust scenarios; `make load`, never started by `make up`
@@ -110,8 +103,8 @@ load/                   locust scenarios; `make load`, never started by `make up
 
    The migration lands in `users/migrations/versions/`. Read it before you
    commit it — autogenerate is a first draft, not an authority.
-4. **Delete the demo surface.** `app/api/v1/home.py` and the `test_task` in
-   `app/worker.py` exist to show the shape. They are not load-bearing.
+4. **Need background jobs?** `canvas/app/worker.py` is the arq worker to copy:
+   one with a real job, rather than a demo kept around for its shape.
 
 ### Adding a second service
 
@@ -140,17 +133,13 @@ load/                   locust scenarios; `make load`, never started by `make up
    `audience=<name>` and get a token only that service accepts. `users`
    needs no change: it keeps no list of services.
 
-The two share a Postgres *server* and Redis, and no data. Crossing a process
+The two share a Postgres *server*, and no data. Crossing a process
 boundary should stay a deliberate act.
 
 ## Before you deploy
 
 Honest limits. Each one is a decision the template defers to you, not a bug:
 
-- **`/api/v1/tasks/` has no authentication.** Anyone who can reach the service
-  can enqueue a job and read any job's result by id. Add
-  `dependencies=[Depends(get_token_data)]` to the router, as
-  `app/api/v1/home.py` does, before this is reachable from anywhere untrusted.
 - **Passwords have no policy.** `UserCreate.password` is a bare `str`; an empty
   one is accepted. Add a `Field(min_length=...)` that matches your rules.
 - **The checked-in secrets are examples.** `.env.example` and the `Secret` in
@@ -166,7 +155,6 @@ Honest limits. Each one is a decision the template defers to you, not a bug:
 - **One signing key, and no rotation procedure.** The JWKS is a list so two
   keys *can* be live at once, but nothing here publishes a second one or ages
   the first out.
-- **The health probe only covers Postgres.** Redis being down does not fail it.
 - **`init-databases.sql` runs once, against an empty data directory.** That is
   every `make up`, since Compose keeps no Postgres volume — but the cluster's
   PVC persists, so a database added after the first deploy needs a manual
@@ -226,7 +214,7 @@ make load-headless u=300 r=50 t=45s            # 300 users, 50/s ramp, 45 second
 make load-headless class=LoginUser u=50 t=20s
 ```
 
-The read mix is a ladder in database work per request — `/api/v1/home/` runs no
+The read mix is a ladder in database work per request — `/.well-known/jwks.json` runs no
 query, `/api/v1/users/{id}/` one, `/api/v1/users/` two — so a run says which
 layer saturated, not only that latency rose.
 

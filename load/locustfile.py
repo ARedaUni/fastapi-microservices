@@ -5,11 +5,11 @@
 The read mix is a ladder in database work per request, so a run tells you
 which layer saturated first rather than just "it got slow":
 
-| Endpoint              | Queries | What it measures                    |
-|-----------------------|---------|-------------------------------------|
-| `/api/v1/home/`       | 0       | event loop, routing, JWT decode     |
-| `/api/v1/users/{id}/` | 1       | + one asyncpg round trip            |
-| `/api/v1/users/`      | 2       | + the superuser check before the list |
+| Endpoint                 | Queries | What it measures                      |
+|--------------------------|---------|---------------------------------------|
+| `/.well-known/jwks.json` | 0       | event loop, routing                   |
+| `/api/v1/users/{id}/`    | 1       | + JWT decode, one asyncpg round trip  |
+| `/api/v1/users/`         | 2       | + the superuser check before the list |
 
 `LoginUser` is deliberately a separate class. bcrypt is CPU work handed to a
 thread pool, so it has its own ceiling -- see the comment on
@@ -63,8 +63,8 @@ class ReadUser(HttpUser):
         self.user_id = response.json()[0]["id"]
 
     @task(10)
-    def home(self) -> None:
-        self.client.get("/api/v1/home/", name="GET /api/v1/home/")
+    def jwks(self) -> None:
+        self.client.get("/.well-known/jwks.json", name="GET /.well-known/jwks.json")
 
     @task(5)
     def read_user(self) -> None:
