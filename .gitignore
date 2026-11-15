@@ -11,3 +11,6 @@ tags.json
 node_modules/
 test-results/
 playwright-report/
+
+# Tilt log, written by `make up`
+.tilt.log

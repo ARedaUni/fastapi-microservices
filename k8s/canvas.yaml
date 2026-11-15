@@ -104,3 +104,42 @@ spec:
                 name: postgres-configuration
             - configMapRef:
                 name: canvas-configuration
+---
+# The expiry sweep. No initContainers: it shares canvas-deployment's database,
+# whose migrations run there, and arq retries until the table exists.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: canvas-worker
+  labels:
+    app: canvas-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: canvas-worker
+  template:
+    metadata:
+      labels:
+        app: canvas-worker
+    spec:
+      containers:
+        - name: canvas-worker
+          image: canvas-worker
+          env:
+            - name: REDIS_HOST
+              value: "redis-service"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: POSTGRES_HOST
+              value: "postgres-service"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: password
+          envFrom:
+            - configMapRef:
+                name: postgres-configuration
+            - configMapRef:
+                name: canvas-configuration

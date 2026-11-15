@@ -22,11 +22,10 @@ import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-# Compose service names: this suite runs inside the `api` container, where
-# `api` is users and `canvas-api` is canvas. Overridable so the same tests can
-# be pointed at a cluster, or at localhost from outside compose.
-USERS_URL = os.environ.get("CONTRACT_USERS_URL", "http://api")
-CANVAS_URL = os.environ.get("CONTRACT_CANVAS_URL", "http://canvas-api")
+# In-cluster Service names: this suite runs inside the users pod. Overridable
+# so the same tests can be pointed at localhost through Tilt's port-forwards.
+USERS_URL = os.environ.get("CONTRACT_USERS_URL", "http://users-service")
+CANVAS_URL = os.environ.get("CONTRACT_CANVAS_URL", "http://canvas-service")
 
 # The seeded superuser. Read from the environment rather than app.core.config,
 # because importing either service's settings would be a dependency on its

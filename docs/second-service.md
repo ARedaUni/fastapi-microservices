@@ -19,7 +19,7 @@ _rate-limited per person_, not just exclusive. Both are covered below.
 ## Why the noun doesn't matter
 
 Copy `users/` to `orders/`, give it its own database, wire it into
-`docker-compose.yml` and the `Tiltfile`, and you have learned one thing: how
+`k8s/` and the `Tiltfile`, and you have learned one thing: how
 to copy a directory. Alembic, the Dockerfile targets and the
 health probe are all already familiar. Two isolated CRUD apps that happen to
 trust the same JWT are not a distributed system; they are one system deployed
@@ -251,7 +251,7 @@ things to learn from it:
 ### 7. Failures you can actually demo
 
 ```bash
-docker compose stop payments
+kubectl scale deploy/payments-deployment --replicas=0
 ```
 
 …mid-claim, and watch what your system does. That is a feedback loop a
@@ -280,7 +280,7 @@ and large enough to teach something.
 | ----- | --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | 1     | `canvas` with the `claim` table, `POST /api/v1/claims/`, the partial unique index | **✅ Done.** Two concurrent claims for one tile return one `201` and one `409` — `canvas/tests/test_claims.py`             |
 | 2     | Realtime fan-out: publish on claim, an SSE endpoint replays it                    | **Backend done, proven end-to-end against real Redis** (`canvas/tests/test_events.py`; a `POST` while curling `GET /api/v1/claims/stream` delivers the claim as a `data:` frame). `canvas.html` now opens an `EventSource` instead of polling, but two-browser-tabs was not independently checked in an actual browser. |
-| 3     | The arq expiry job                                                                | **✅ Done (Compose; k8s wiring pending).** A cron sweep releases lapsed holds and publishes them; `POST /claims/{id}/confirm` refuses a lapsed hold by Postgres's clock; `canvas/tests/test_confirm.py` forces both orders of the confirm-vs-sweep race and gets one winner each time |
+| 3     | The arq expiry job                                                                | **✅ Done** (`canvas-worker` in `k8s/canvas.yaml`). A cron sweep releases lapsed holds and publishes them; `POST /claims/{id}/confirm` refuses a lapsed hold by Postgres's clock; `canvas/tests/test_confirm.py` forces both orders of the confirm-vs-sweep race and gets one winner each time |
 | 4     | Identity: `users` signs RS256, `canvas` verifies via JWKS — no user table (§5 decided) | `canvas` accepts a token `users` signed and rejects one signed with a different key; `canvas` imports nothing from `users` |
 | 5     | Per-user cooldown on claims, backed by Redis                                      | Two claims from the same user inside the cooldown window: the second is `429`, not `201`                                   |
 | 6     | `payments`, deliberately flaky                                                    | Stopping `payments` mid-claim releases the tile rather than stranding it                                                   |
@@ -305,23 +305,15 @@ browser. Seeing it work is what makes the rest worth building.
 
 ### Mechanically, per new service
 
-Already done for `canvas` — `scripts/init-databases.sql` and
-`k8s/postgres.yaml` both carry it, `docker-compose.yml` and the `Tiltfile`
-both wire it, per the [README](../README.md#adding-a-second-service). The
-same three steps apply to `payments` and `notifications` when their turn
-comes:
+Already done for `canvas`, per the [README](../README.md#adding-a-second-service).
+The same steps apply to `payments` and `notifications` when their turn comes:
 
-1. Its database — two lines in `scripts/init-databases.sql` **and** the
-   `postgres-init` ConfigMap in `k8s/postgres.yaml`.
+1. Its database — two lines in the `postgres-init` ConfigMap in
+   `k8s/postgres.yaml`.
 2. A sibling directory, copied from `users/` or `canvas/`, trimmed to what
    it needs.
-3. Build and target in `docker-compose.yml`; a `k8s/<name>.yaml` modelled on
-   `k8s/canvas.yaml`, carrying its own `POSTGRES_DB`; its name in the
-   `Tiltfile` `services` list.
-
-Compose keeps no Postgres volume, so `make up` re-runs the init script every
-time. The cluster's PVC does persist — a database added after the first
-deploy needs a manual `CREATE DATABASE` or a fresh volume.
+3. A `k8s/<name>.yaml` modelled on `k8s/canvas.yaml`, carrying its own
+   `POSTGRES_DB`; its name and a `docker_build` in the `Tiltfile`.
 
 ## What this repo doesn't have yet
 

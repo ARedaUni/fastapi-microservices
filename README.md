@@ -9,18 +9,20 @@ Clone it, rename the service, delete what you don't need.
 
 ## Quickstart
 
-Docker is the only prerequisite.
+Docker, [minikube](https://minikube.sigs.k8s.io/), `kubectl` and
+[Tilt](https://tilt.dev/) are the prerequisites.
 
 ``` bash
-cp .env.example .env
+make cluster   # once
 make up
 ```
 
-That brings up Postgres, Redis, both services and `canvas`' worker, runs the migrations
-and seeds the first superuser. The API is on <http://localhost:8000>, the
+That deploys `k8s/` with Tilt: Postgres, Redis, both services and `canvas`'
+worker. Migrations and the seed run, and it waits until everything is ready.
+Tilt's UI is on <http://localhost:10350>. The API is on <http://localhost:8000>, the
 interactive docs on <http://localhost:8000/api/docs>.
 
-Log in as `admin@admin.com` / `password` (from `.env.example`) and you have a
+Log in as `admin@admin.com` / `password` (from the Secret in `k8s/users.yaml`) and you have a
 bearer token:
 
 ``` bash
@@ -31,8 +33,9 @@ curl -X POST http://localhost:8000/api/v1/login/ \
 That token is good at `users` only. Add `&audience=canvas` for one that
 `canvas` accepts, and that `users` then refuses.
 
-`users/app` and `users/tests` are bind-mounted, so edits reload without a
-rebuild. Change `users/requirements.txt` and you need `make up` again.
+Tilt syncs `app/` and `tests/` into the running pods, so edits reload without
+a rebuild. Anything else in a service's directory, such as `requirements.txt` or
+a migration, triggers a rebuild and redeploy on its own.
 
 ## What's in the box
 
@@ -43,7 +46,7 @@ rebuild. Change `users/requirements.txt` and you need `make up` again.
 | [Alembic](https://alembic.sqlalchemy.org/) | Schema migrations, run as their own release-phase step |
 | [PyJWT](https://pyjwt.readthedocs.io/) + [bcrypt](https://github.com/pyca/bcrypt) | Token auth and password hashing, off the event loop |
 | [pytest](https://docs.pytest.org/) + [ruff](https://docs.astral.sh/ruff/) + [mypy](https://mypy.readthedocs.io/) | The gates CI runs, all reproducible with `make` |
-| [Tilt](https://tilt.dev/) | The Kubernetes dev loop, for when Compose isn't enough |
+| [Tilt](https://tilt.dev/) | The dev loop: deploys `k8s/`, syncs code into the pods |
 
 ### Endpoints
 
@@ -65,14 +68,13 @@ users/                  one service; the plural name is the invitation to add mo
 ├── tests/
 └── Dockerfile          one image, two targets: prod, dev
 k8s/                    manifests, one file per service
-scripts/                init-databases.sql -- one database per service
 load/                   locust scenarios; `make load`, never started by `make up`
 ```
 
 ## Using it as a template
 
 1. **Rename the service.** `users/` is a directory name, and it appears in
-   `docker-compose.yml`, the `Tiltfile` and `k8s/*.yaml`. Nothing imports it —
+   the `Tiltfile` and `k8s/*.yaml`. Nothing imports it —
    the Python package is `app`, which stays.
 2. **Generate a real signing key.** The value is base64 of a PEM, on one line:
 
@@ -98,8 +100,8 @@ load/                   locust scenarios; `make load`, never started by `make up
 
 ### Adding a second service
 
-1. **Give it a database first.** Two lines in `scripts/init-databases.sql`, and
-   the same two in the `postgres-init` ConfigMap in `k8s/postgres.yaml`:
+1. **Give it a database first.** Two lines in the `postgres-init` ConfigMap in
+   `k8s/postgres.yaml`:
 
    ``` sql
    CREATE DATABASE orders;
@@ -111,9 +113,9 @@ load/                   locust scenarios; `make load`, never started by `make up
    `make migrations` in either one autogenerating a `drop_table` for the
    other's tables, because they are absent from its metadata.
 2. **Copy `users/`** to a sibling directory.
-3. **Wire it up.** Build and target in `docker-compose.yml`; a
-   `k8s/<name>.yaml` modelled on `k8s/users.yaml`, carrying its own
-   `POSTGRES_DB` in its ConfigMap; its name in the `Tiltfile` `services` list.
+3. **Wire it up.** A `k8s/<name>.yaml` modelled on `k8s/users.yaml`, carrying
+   its own `POSTGRES_DB` in its ConfigMap; its name and a `docker_build` in the
+   `Tiltfile`.
 4. **Trim the copy.** To verify tokens `users/` signed it needs `JWT_ISSUER`,
    `JWKS_URL` and roughly the thirty lines in `canvas/app/core/security.py` —
    not `models/users.py`, `crud/` or a signing key. Verifying a JWT takes a
@@ -132,8 +134,8 @@ Honest limits. Each one is a decision the template defers to you, not a bug:
 
 - **Passwords have no policy.** `UserCreate.password` is a bare `str`; an empty
   one is accepted. Add a `Field(min_length=...)` that matches your rules.
-- **The checked-in secrets are examples.** `.env.example` and the `Secret` in
-  `k8s/users.yaml` carry public values. Both say so; replace all of them.
+- **The checked-in secrets are examples.** The Secrets in `k8s/users.yaml` and
+  `k8s/postgres.yaml` carry public values. Replace all of them.
 - **Any shape-valid audience is granted.** Login mints a token for whatever
   service name the client asks for, with no per-service policy ("only admins
   get `payments` tokens"). Add an allowlist to `login` the day one service
@@ -145,26 +147,20 @@ Honest limits. Each one is a decision the template defers to you, not a bug:
 - **One signing key, and no rotation procedure.** The JWKS is a list so two
   keys *can* be live at once, but nothing here publishes a second one or ages
   the first out.
-- **`init-databases.sql` runs once, against an empty data directory.** That is
-  every `make up`, since Compose keeps no Postgres volume — but the cluster's
-  PVC persists, so a database added after the first deploy needs a manual
-  `CREATE DATABASE` or a fresh volume.
+- **`postgres-init` runs once, against an empty data directory.** `make down`
+  deletes the volume, so the next `make up` re-runs it; short of that, a
+  database added later needs a manual `CREATE DATABASE`.
 - **One replica, no HPA, no resource limits.** `k8s/` is a working development
   cluster, not a production topology.
 
 ## Kubernetes
 
-For a cluster-shaped environment:
-
-``` bash
-minikube start
-tilt up
-```
+There is no other way to run the stack: `k8s/` is the one description of
+which processes exist, and Tilt is how they get to a cluster.
 
 Migrations and the first-superuser seed run as the `perform-migrations`
 initContainer in `k8s/users.yaml`, which must exit 0 before the app container
-starts. `docker-compose.yml` spells the same thing as a `migrate` service. Both
-mean schema changes are release-phase, not something each replica redoes on
+starts. That means schema changes are release-phase, not something each replica redoes on
 every restart — and a failing migration stops the deploy instead of booting the
 app against the wrong schema.
 
@@ -172,16 +168,17 @@ app against the wrong schema.
 
 | Command | What it does |
 |---|---|
-| `make up` | Build and start the stack, waiting for health |
-| `make down` | Stop it |
-| `make tests` | pytest inside the api container, with the coverage gate |
+| `make cluster` | Create the minikube cluster, once |
+| `make up` | Deploy the stack with Tilt, waiting until it is ready |
+| `make down` | Stop Tilt and delete what it deployed |
+| `make tests` | pytest inside each service's pod, with the coverage gate |
 | `make contract` | Cross-service tests: the two services still agree about a token |
 | `make lint` | `ruff check`, `ruff format --check`, `mypy` |
 | `make format` | Fix what `ruff` can fix |
 | `make migrations msg="..."` | Autogenerate a migration; `svc=canvas` for the other service |
-| `make logs` | Tail the api |
-| `make shell` | Bash inside the api container |
-| `make load` | Load-test the api; web UI on <http://localhost:8089> |
+| `make logs` | Tail users |
+| `make shell` | Bash inside the users pod |
+| `make load` | Load-test users from inside the cluster; web UI on <http://localhost:8089> |
 | `make load-headless` | Load-test and print percentiles, then exit |
 | `make help` | This table, from the Makefile itself |
 
@@ -215,15 +212,16 @@ Three things that would otherwise surprise you:
   the tooling breaking.
 - **You are loading the `dev` target** — one uvicorn process with `--reload`.
   `prod` runs three workers, so these numbers are pessimistic for the read path.
-- **The `locust` service sits behind a Compose profile**, so `make up` and CI
-  never start it. `docker compose --profile load` is what reaches it.
+- **Locust runs inside the cluster**, held by Tilt until `make load` triggers
+  it. Through a port-forward a run would measure kubectl's tunnel, not the
+  service.
 
 ## Credits
 
 A fork of [Kludex/fastapi-microservices](https://github.com/Kludex/fastapi-microservices)
 by Marcelo Trylesinski, itself inspired by
 [tiangolo/full-stack-fastapi-postgresql](https://github.com/tiangolo/full-stack-fastapi-postgresql).
-This fork brings it onto Python 3.13 and current dependencies, adds the Compose
+This fork brings it onto Python 3.13 and current dependencies, adds the Tilt
 dev loop, and covers the authorization rules with tests.
 
 ## License

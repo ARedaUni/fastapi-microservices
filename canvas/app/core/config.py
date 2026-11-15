@@ -8,9 +8,7 @@ class Settings(BaseSettings):
     """Trimmed from `users/`: this service owns tiles, not accounts.
 
     No FIRST_USER_*, and no signing key: this service verifies tokens and
-    cannot mint one. Extra variables in the environment are ignored, which is
-    why the shared .env can carry users' settings without this refusing to
-    start.
+    cannot mint one. Extra variables in the environment are ignored.
     """
 
     PROJECT_NAME: str

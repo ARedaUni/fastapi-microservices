@@ -14,11 +14,19 @@ jobs:
       - name: Checkout working branch
         uses: actions/checkout@v4
 
-      # CI runs the same stack `make up` runs locally, so a green pipeline and a
-      # working laptop mean the same thing.
+      # CI runs the same cluster and the same `make up` as a laptop, so a green
+      # pipeline and a working laptop mean the same thing.
+      - name: Install minikube
+        uses: medyagh/setup-minikube@latest
+        with:
+          start: false
+
+      - name: Install Tilt
+        run: curl -fsSL https://raw.githubusercontent.com/tilt-dev/tilt/master/scripts/install.sh | bash
+
       - name: Start the stack
         run: |
-          cp .env.example .env
+          make cluster
           make up
 
       # `make tests` runs the canvas page's model tests with node:test, and the
@@ -49,4 +57,7 @@ jobs:
 
       - name: Dump logs on failure
         if: failure()
-        run: docker compose logs
+        run: |
+          cat .tilt.log
+          kubectl get pods -A
+          kubectl logs --all-containers -l 'app in (users,canvas,canvas-worker)' --tail=200

@@ -1,0 +1,49 @@
+# Load generator. Inside the cluster on purpose: driven through a port-forward,
+# a run would measure kubectl's tunnel rather than the service. Not started by
+# `make up` -- Tilt holds it until `make load` triggers it.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: locust
+  labels:
+    app: locust
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: locust
+  template:
+    metadata:
+      labels:
+        app: locust
+    spec:
+      containers:
+        - name: locust
+          image: locustio/locust:2.46.4
+          args:
+            - -f
+            - /mnt/locust/locustfile.py
+            - --host
+            - http://users-service
+            - --class-picker
+            - ReadUser
+          ports:
+            - containerPort: 8089
+          env:
+            - name: FIRST_USER_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: users-credentials
+                  key: email
+            - name: FIRST_USER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: users-credentials
+                  key: password
+          volumeMounts:
+            - name: locustfile
+              mountPath: /mnt/locust
+      volumes:
+        - name: locustfile
+          configMap:
+            name: locustfile

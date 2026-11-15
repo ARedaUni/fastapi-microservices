@@ -17,8 +17,7 @@ metadata:
   name: postgres-init
   labels:
     app: postgres
-# Mirrors scripts/init-databases.sql, which Compose mounts directly. Keep the
-# two in step; a service added to one and not the other fails on first deploy.
+# One database per service, created on an empty data directory only.
 data:
   init-databases.sql: |
     CREATE DATABASE users;
@@ -90,7 +89,7 @@ spec:
           env:
             # The server's bootstrap database, not any service's. At `postgres`
             # the entrypoint creates nothing extra, so the only databases that
-            # exist are the ones init-databases.sql asks for.
+            # exist are the ones postgres-init asks for.
             - name: POSTGRES_DB
               value: "postgres"
             - name: POSTGRES_PASSWORD
